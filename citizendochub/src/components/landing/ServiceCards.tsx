@@ -3,9 +3,10 @@ import type { Language, Service } from '../../types';
 
 interface ServiceCardProps {
     language: Language;
+    onApplyClick: (serviceId: string) => void;
 }
 
-const ServiceCards: React.FC<ServiceCardProps> = ({ language }) => {
+const ServiceCards: React.FC<ServiceCardProps> = ({ language, onApplyClick }) => {
     const services: Service[] = [
         {
             id: 'citizenship-certificate',
@@ -71,7 +72,10 @@ const ServiceCards: React.FC<ServiceCardProps> = ({ language }) => {
                                     <span className="font-medium">{language === 'np' ? `रु ${service.feeNp}` : `Rs ${service.fee}`}</span>
                                 </div>
                             </div>
-                            <button className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                            <button 
+                                onClick={() => onApplyClick(service.id)}
+                                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                            >
                                 {language === 'np' ? 'अबै लागू गर्नुहोस्' : 'Apply Now'}
                             </button>
                         </div>

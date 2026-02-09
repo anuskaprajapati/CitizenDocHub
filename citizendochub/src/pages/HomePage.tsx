@@ -4,6 +4,7 @@ import Header from '../components/shared/Header';
 import HeroSection from '../components/landing/HeroSection';
 import ServiceCards from '../components/landing/ServiceCards';
 import HowItWorks from '../components/landing/HowItWorks';
+import AboutUs from '../components/landing/AboutUs';
 import Footer from '../components/shared/Footer';
 
 interface HomePageProps {
@@ -17,8 +18,9 @@ const HomePage: React.FC<HomePageProps> = ({ language, setLanguage, onLoginClick
     <div className="min-h-screen">
       <Header language={language} setLanguage={setLanguage} onLoginClick={onLoginClick} />
       <HeroSection language={language} onLoginClick={onLoginClick} />
-      <ServiceCards language={language} />
+      <ServiceCards language={language} onApplyClick={onLoginClick} />
       <HowItWorks language={language} />
+      <AboutUs language={language} />
       <Footer language={language} />
     </div>
   );

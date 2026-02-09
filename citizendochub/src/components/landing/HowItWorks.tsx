@@ -123,9 +123,6 @@ const HowItWorks: React.FC<HowItWorksProps> = ({ language }) => {
             <button className="px-8 py-4 bg-white text-blue-600 font-bold rounded-xl hover:bg-gray-100 transition-colors">
               {language === 'np' ? 'निःशुल्क सदस्य बन्नुहोस्' : 'Join Free Now'}
             </button>
-            <button className="px-8 py-4 bg-transparent border-2 border-white rounded-xl hover:bg-white/10 transition-colors">
-              {language === 'np' ? 'डेमो हेर्नुहोस्' : 'View Demo'}
-            </button>
           </div>
         </div>
       </div>
