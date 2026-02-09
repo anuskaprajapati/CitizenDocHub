@@ -104,8 +104,8 @@ const Footer: React.FC<FooterProps> = ({ language }) => {
           <div className="flex flex-col md:flex-row justify-between items-center">
             <p className="text-gray-400 text-center md:text-left mb-4 md:mb-0">
               {language === 'np'
-                ? '© २०२४ CitizenDocHub. सर्वाधिकार सुरक्षित।'
-                : '© 2024 CitizenDocHub. All rights reserved.'}
+                ? '© २०२५ CitizenDocHub. सर्वाधिकार सुरक्षित।'
+                : '© 2025 CitizenDocHub. All rights reserved.'}
             </p>
             <div className="flex items-center space-x-6">
               <p className="text-gray-400 text-sm">

@@ -4,9 +4,10 @@ import { FileText, Upload, Search, Download } from 'lucide-react';
 
 interface HowItWorksProps {
   language: Language;
+  onJoinFreeClick: () => void;
 }
 
-const HowItWorks: React.FC<HowItWorksProps> = ({ language }) => {
+const HowItWorks: React.FC<HowItWorksProps> = ({ language, onJoinFreeClick }) => {
   const steps = [
     {
       id: 1,
@@ -120,7 +121,9 @@ const HowItWorks: React.FC<HowItWorksProps> = ({ language }) => {
               : 'Join free today and submit your application in 10 minutes'}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="px-8 py-4 bg-white text-blue-600 font-bold rounded-xl hover:bg-gray-100 transition-colors">
+            <button 
+            onClick={onJoinFreeClick}
+            className="px-8 py-4 bg-white text-blue-600 font-bold rounded-xl hover:bg-gray-100 transition-colors">
               {language === 'np' ? 'निःशुल्क सदस्य बन्नुहोस्' : 'Join Free Now'}
             </button>
           </div>

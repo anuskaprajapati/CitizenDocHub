@@ -30,7 +30,7 @@ const HomePage: React.FC<HomePageProps> = ({ language, setLanguage, onLoginClick
       <Header language={language} setLanguage={setLanguage} onLoginClick={onLoginClick} />
       <HeroSection language={language} onLoginClick={onLoginClick} onOfficerLoginClick={onOfficerLoginClick}/>
       <ServiceCards language={language} onApplyClick={onLoginClick} />
-      <HowItWorks language={language} />
+      <HowItWorks language={language} onJoinFreeClick={onLoginClick} />
       <AboutUs language={language} />
       <Footer language={language} />
     </div>
