@@ -86,25 +86,32 @@ const AboutUs: React.FC<AboutUsProps> = ({ language }) => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-white/10 rounded-lg">
-                <div className="text-3xl font-bold">५००+</div>
+                <div className="text-3xl font-bold">
+                  {language === 'np' ? '५००+' : '500+'}
+                </div>
                 <div className="text-sm opacity-90">
                   {language === 'np' ? 'नगरपालिका' : 'Municipalities'}
                 </div>
               </div>
               <div className="text-center p-4 bg-white/10 rounded-lg">
-                <div className="text-3xl font-bold">१० लाख+</div>
+                <div className="text-3xl font-bold">
+                  {language === 'np' ? '१० लाख+' : '10 Lakhs+'}</div>
                 <div className="text-sm opacity-90">
                   {language === 'np' ? 'प्रयोगकर्ता' : 'Users'}
                 </div>
               </div>
               <div className="text-center p-4 bg-white/10 rounded-lg">
-                <div className="text-3xl font-bold">९८%</div>
+                <div className="text-3xl font-bold">
+                  {language === 'np' ? '९८%' : '98%'}
+                </div>
                 <div className="text-sm opacity-90">
                   {language === 'np' ? 'सन्तुष्टि दर' : 'Satisfaction Rate'}
                 </div>
               </div>
               <div className="text-center p-4 bg-white/10 rounded-lg">
-                <div className="text-3xl font-bold">२४/७</div>
+                <div className="text-3xl font-bold">
+                  {language === 'np' ? '२४/७' : '24/7'}
+                </div>
                 <div className="text-sm opacity-90">
                   {language === 'np' ? 'सहयोग' : 'Support'}
                 </div>

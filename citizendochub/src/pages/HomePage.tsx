@@ -11,13 +11,24 @@ interface HomePageProps {
   language: Language;
   setLanguage: (lang: Language) => void;
   onLoginClick: () => void;
+  onOfficerLoginClick: () => void;
 }
 
-const HomePage: React.FC<HomePageProps> = ({ language, setLanguage, onLoginClick }) => {
+const HomePage: React.FC<HomePageProps> = ({ language, setLanguage, onLoginClick, onOfficerLoginClick }) => {
+  const handleOfficerClick = () => {
+    console.log('Government Officer Login Clicked');
+    onOfficerLoginClick();
+  };
+
+  const handleCitizenClick = () => {
+    console.log('Citizen Login Clicked');
+    onLoginClick();
+  };
+  
   return (
     <div className="min-h-screen">
       <Header language={language} setLanguage={setLanguage} onLoginClick={onLoginClick} />
-      <HeroSection language={language} onLoginClick={onLoginClick} />
+      <HeroSection language={language} onLoginClick={onLoginClick} onOfficerLoginClick={onOfficerLoginClick}/>
       <ServiceCards language={language} onApplyClick={onLoginClick} />
       <HowItWorks language={language} />
       <AboutUs language={language} />

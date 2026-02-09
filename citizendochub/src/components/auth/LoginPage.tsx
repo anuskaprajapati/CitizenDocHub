@@ -261,15 +261,16 @@ const Login: React.FC<LoginProps> = ({
       isValid = false;
     }
     
-    // FIX: Create a variable to avoid TypeScript error
+    // Citizen ID validation only for non-admin users
     const isAdmin = registrationData.userType === 'admin';
-    
-    if (!isAdmin && !registrationData.citizenId.trim()) {
-      errors.citizenId = language === 'np' ? 'नागरिकता नम्बर आवश्यक छ' : 'Citizen ID is required';
-      isValid = false;
-    } else if (!isAdmin && !validateCitizenId(registrationData.citizenId)) {
-      errors.citizenId = language === 'np' ? 'वैध नागरिकता नम्बर प्रविष्ट गर्नुहोस् (XX-XX-XX-XX-XXXXX)' : 'Please enter a valid Citizen ID (XX-XX-XX-XX-XXXXX)';
-      isValid = false;
+    if (!isAdmin) {
+      if (!registrationData.citizenId.trim()) {
+        errors.citizenId = language === 'np' ? 'नागरिकता नम्बर आवश्यक छ' : 'Citizen ID is required';
+        isValid = false;
+      } else if (!validateCitizenId(registrationData.citizenId)) {
+        errors.citizenId = language === 'np' ? 'वैध नागरिकता नम्बर प्रविष्ट गर्नुहोस् (XX-XX-XX-XX-XXXXX)' : 'Please enter a valid Citizen ID (XX-XX-XX-XX-XXXXX)';
+        isValid = false;
+      }
     }
     
     if (!registrationData.password.trim()) {
@@ -303,31 +304,28 @@ const Login: React.FC<LoginProps> = ({
     setIsLoading(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // FIX: For demo purposes, allow login with test credentials
-      const isTestUser = (formData.email === 'user@gmail.com' || formData.phone === '9840630653') && formData.password === '123456';
+      // In a real application, you would make an API call here
+      // For now, we'll simulate a successful login
+      const credentials = {
+        email: formData.email,
+        phone: formData.phone,
+        citizenId: formData.citizenId,
+        name: userType === 'citizen' ? 'Citizen User' : 
+              userType === 'officer' ? 'Government Officer' : 
+              'Administrator',
+        userType: userType
+      };
       
-      if (isTestUser) {
-        // Call the onLogin prop with user data
-        onLogin(userType, {
-          email: formData.email || 'user@gmail.com',
-          phone: formData.phone || '9840630653',
-          citizenId: formData.citizenId || '44-44-44-44-44444',
-          name: 'Test User'
-        });
-      } else {
-        setErrorMessage(
-          language === 'np' 
-            ? 'यो प्रयोगकर्ता दर्ता भएको छैन। कृपया पहिले दर्ता गर्नुहोस्।' 
-            : 'This user is not registered. Please register first.'
-        );
-      }
+      // Call the onLogin prop with user data
+      onLogin(userType, credentials);
       
     } catch (error) {
       setErrorMessage(
         language === 'np' 
-          ? 'लगइन गर्दा त्रुटि भयो। पुनः प्रयास गर्नुहोस्।' 
+          ? 'लगइन गर्दा त्रुटि भयो। कृपया पुनः प्रयास गर्नुहोस्।' 
           : 'Error during login. Please try again.'
       );
     } finally {
@@ -342,6 +340,8 @@ const Login: React.FC<LoginProps> = ({
       return;
     }
     
+    // In a real application, you would make an API call here
+    // For now, show a success message
     alert(language === 'np' 
       ? 'दर्ता सफल भयो! कृपया लगइन गर्नुहोस्।' 
       : 'Registration successful! Please login.');
@@ -363,6 +363,7 @@ const Login: React.FC<LoginProps> = ({
       return;
     }
     
+    // In a real application, you would make an API call here
     alert(language === 'np' 
       ? 'पासवर्ड रिसेट लिंक तपाईंको इमेलमा पठाइएको छ।' 
       : 'Password reset link has been sent to your email.');
@@ -377,37 +378,43 @@ const Login: React.FC<LoginProps> = ({
     {
       id: 'email',
       icon: Mail,
-      label: language === 'np' ? 'इमेल' : 'Email',
       labelEn: 'Email',
       labelNp: 'इमेल'
     },
     {
       id: 'phone',
       icon: Smartphone,
-      label: language === 'np' ? 'फोन नम्बर' : 'Phone',
       labelEn: 'Phone',
       labelNp: 'फोन नम्बर'
     },
     {
       id: 'citizenId',
       icon: User,
-      label: language === 'np' ? 'नागरिकता नम्बर' : 'Citizen ID',
       labelEn: 'Citizen ID',
       labelNp: 'नागरिकता नम्बर'
     }
   ];
 
   const userTypes = [
-    { id: 'citizen' as UserType, icon: User, label: language === 'np' ? 'नागरिक' : 'Citizen' },
-    { id: 'officer' as UserType, icon: Shield, label: language === 'np' ? 'अधिकृत' : 'Officer' },
-    { id: 'admin' as UserType, icon: Building, label: language === 'np' ? 'प्रशासक' : 'Administrator' }
+    { id: 'citizen' as UserType, icon: User, labelEn: 'Citizen', labelNp: 'नागरिक' },
+    { id: 'officer' as UserType, icon: Shield, labelEn: 'Officer', labelNp: 'अधिकृत' },
+    { id: 'admin' as UserType, icon: Building, labelEn: 'Administrator', labelNp: 'प्रशासक' }
   ];
+
+  // Helper function to get form value based on login method
+  const getFormValue = () => {
+    switch (loginMethod) {
+      case 'email': return formData.email;
+      case 'phone': return formData.phone;
+      case 'citizenId': return formData.citizenId;
+      default: return '';
+    }
+  };
 
   // Registration Form Modal
   const renderRegistrationFormModal = () => {
     if (!showRegistrationForm) return null;
 
-    // FIX: Create a variable for the JSX part too
     const isAdmin = registrationData.userType === 'admin';
 
     return (
@@ -673,7 +680,11 @@ const Login: React.FC<LoginProps> = ({
                 <input
                   type={forgotPasswordMethod === 'email' ? 'email' : 'text'}
                   name={forgotPasswordMethod}
-                  value={forgotPasswordData[forgotPasswordMethod]}
+                  value={
+                    forgotPasswordMethod === 'email' ? forgotPasswordData.email :
+                    forgotPasswordMethod === 'phone' ? forgotPasswordData.phone :
+                    forgotPasswordData.citizenId
+                  }
                   onChange={handleForgotPasswordInputChange}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
                   placeholder={
@@ -780,7 +791,9 @@ const Login: React.FC<LoginProps> = ({
                       }`}
                     >
                       <Icon size={20} />
-                      <span className="text-xs mt-1 font-medium">{type.label}</span>
+                      <span className="text-xs mt-1 font-medium">
+                        {language === 'np' ? type.labelNp : type.labelEn}
+                      </span>
                     </button>
                   );
                 })}
@@ -794,12 +807,14 @@ const Login: React.FC<LoginProps> = ({
               <div className="flex space-x-2">
                 {loginMethods.map((method) => {
                   const Icon = method.icon;
+                  const isActive = loginMethod === method.id;
                   return (
                     <button
                       key={method.id}
+                      type="button"
                       onClick={() => setLoginMethod(method.id as 'email' | 'phone' | 'citizenId')}
                       className={`flex-1 flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
-                        loginMethod === method.id
+                        isActive
                           ? 'border-blue-500 bg-blue-50 text-blue-600'
                           : 'border-gray-200 hover:border-gray-300 text-gray-600'
                       }`}
@@ -832,7 +847,7 @@ const Login: React.FC<LoginProps> = ({
                   <input
                     type={loginMethod === 'email' ? 'email' : 'text'}
                     name={loginMethod}
-                    value={formData[loginMethod]}
+                    value={getFormValue()}
                     onChange={handleInputChange}
                     className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition ${
                       formErrors[loginMethod] ? 'border-red-500' : 'border-gray-300'

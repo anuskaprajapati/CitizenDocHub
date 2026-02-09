@@ -14,6 +14,10 @@ const App: React.FC = () => {
     setCurrentPage('login');
   };
 
+  const handleOfficerLoginClick = () => {
+    setCurrentPage('login');
+  };
+
   const handleLogin = (userType: UserType) => {
     setCurrentPage(userType); // Directly set to the dashboard
   };
@@ -63,6 +67,7 @@ const App: React.FC = () => {
             language={language} 
             setLanguage={setLanguage}
             onLoginClick={handleLoginClick}
+            onOfficerLoginClick={handleOfficerLoginClick}
           />
         );
     }

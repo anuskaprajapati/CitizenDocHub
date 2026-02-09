@@ -4,7 +4,7 @@ import type { Language } from '../../types';
 interface HeroSectionProps {
   language: Language;
   onLoginClick: () => void;
-  onOfficerLoginClick?: () => void;
+  onOfficerLoginClick: () => void;
 }
 
 const HeroSection: React.FC<HeroSectionProps> = ({ 
@@ -33,25 +33,24 @@ const HeroSection: React.FC<HeroSectionProps> = ({
 
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white">
-
       <div className="relative container mx-auto px-4 py-20 md:py-28">
         <div className="max-w-3xl mx-auto text-center">
-          {/* Main Heading */}
+          {/* Main Heading - ONE instance */}
           <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
             {language === 'np' 
               ? 'घरबाटै सबै सरकारी कागजात पेश गर्नुहोस्' 
               : 'Submit All Government Documents From Home'}
           </h1>
           
-          {/* Sub-heading */}
+          {/* Sub-heading - ONE instance with capital I */}
           <p className="text-xl md:text-2xl mb-10 opacity-90">
             {language === 'np'
               ? 'नागरिकता प्रमाणपत्र, जन्म दर्ता, विवाह दर्ता - सबै कागजात एकै ठाउँमा'
-              : 'Citizenship Certificate, Birth Registration, Marriage Registration - All in One Place'}
+              : 'Citizenship Certificate, Birth Registration, Marriage Registration - All In One Place'}
           </p>
           
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+          {/* CTA Buttons - ONE instance with arrow */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
             {/* Submit Documents Button */}
             <button 
               onClick={onLoginClick}
@@ -72,7 +71,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({
             
             {/* Government Officer Button */}
             <button 
-              onClick={() => onOfficerLoginClick?.()}
+              onClick={onOfficerLoginClick}
               className="px-8 py-4 bg-transparent border-2 border-white text-lg rounded-xl hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-1 hover:scale-105 group"
             >
               <div className="flex items-center justify-center gap-2">
@@ -89,7 +88,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({
             </button>
           </div>
           
-          {/* Stats Bar */}
+          {/* Stats Bar - ONE instance */}
           <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div className="text-center">
