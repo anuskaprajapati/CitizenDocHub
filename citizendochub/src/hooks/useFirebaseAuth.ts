@@ -5,7 +5,9 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  type User
+  type User,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
@@ -14,12 +16,18 @@ export const useFirebaseAuth = () => {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Set persistence ONCE when hook initializes
+  useEffect(() => {
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.error('Error setting persistence:', error);
+    });
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       
       if (firebaseUser) {
-        // Get user role from Firestore
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
@@ -43,10 +51,15 @@ export const useFirebaseAuth = () => {
 
   const signIn = async (email: string, password: string) => {
     try {
+      console.log('signIn called with:', email);
+      if (!email || !password) {
+        throw new Error('Email and password are required');
+      }
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log('signIn successful:', userCredential.user.email);
       return { success: true, user: userCredential.user };
     } catch (error: any) {
-      console.error('Sign in error:', error);
+      console.error('Sign in error:', error.code, error.message);
       return { success: false, error: error.message };
     }
   };

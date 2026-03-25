@@ -1,14 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Language, UserType } from './types';
 import HomePage from './pages/HomePage';
 import CitizenDashboard from './pages/CitizenDashboard';
 import OfficerDashboard from './pages/OfficerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import Login from './components/auth/LoginPage';
+import { useFirebaseAuth } from './hooks/useFirebaseAuth';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'home' | 'login' | 'citizen' | 'officer' | 'admin'>('home');
   const [language, setLanguage] = useState<Language>('np');
+  const { user, userRole, loading, signIn, signOut } = useFirebaseAuth();
+
+  // Auto-redirect based on auth state
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        // User is logged in, redirect to appropriate dashboard
+        if (userRole === 'citizen') {
+          setCurrentPage('citizen');
+        } else if (userRole === 'officer') {
+          setCurrentPage('officer');
+        } else if (userRole === 'admin') {
+          setCurrentPage('admin');
+        } else {
+          setCurrentPage('citizen'); // Default to citizen if role not set
+        }
+      } else {
+        // User is not logged in, show home page
+        if (currentPage !== 'home' && currentPage !== 'login') {
+          setCurrentPage('home');
+        }
+      }
+    }
+  }, [user, userRole, loading]);
 
   const handleLoginClick = () => {
     setCurrentPage('login');
@@ -18,11 +43,30 @@ const App: React.FC = () => {
     setCurrentPage('login');
   };
 
-  const handleLogin = (userType: UserType) => {
-    setCurrentPage(userType); // Directly set to the dashboard
+  // Fixed: Handle login with proper credentials
+  const handleLogin = async (userType: UserType, credentials: { email: string; password: string }) => {
+    console.log('Attempting login with:', credentials.email);
+    
+    if (!credentials.email || !credentials.password) {
+      alert(language === 'np' ? 'इमेल र पासवर्ड आवश्यक छ' : 'Email and password are required');
+      return;
+    }
+    
+    const result = await signIn(credentials.email, credentials.password);
+    
+    if (result.success) {
+      console.log('Login successful');
+      // The useEffect will handle redirect based on role
+    } else {
+      console.error('Login failed:', result.error);
+      alert(language === 'np' 
+        ? `लगइन असफल: ${result.error}` 
+        : `Login failed: ${result.error}`);
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut();
     setCurrentPage('home');
   };
 
@@ -42,6 +86,17 @@ const App: React.FC = () => {
     setCurrentPage('home');
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   const renderPage = () => {
     switch (currentPage) {
       case 'login':
@@ -51,7 +106,7 @@ const App: React.FC = () => {
             onToggleLanguage={toggleLanguage}
             onNavigateToRegister={handleNavigateToRegister}
             onForgotPassword={handleForgotPassword}
-            onLogin={handleLogin} // Pass the login handler
+            onLogin={handleLogin}
             onBackToHome={handleBackToHome}
           />
         );

@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import type { Language } from '../types';
 import { Settings, Users, BarChart3, Activity, Shield, Bell, Search, LogOut, Plus, Download, Filter, UserPlus, Key, Database, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { useFirebaseAuth } from '../hooks/useFirebaseAuth';
+import { db } from '../firebase/config';
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  setDoc,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+  onSnapshot
+} from 'firebase/firestore';
 
 interface AdminDashboardProps {
   language: Language;
@@ -14,6 +30,8 @@ interface Officer {
   department: string;
   status: 'active' | 'inactive';
   lastActive: string;
+  role: string;
+  createdAt: Date;
 }
 
 interface Citizen {
@@ -22,6 +40,17 @@ interface Citizen {
   email: string;
   applications: number;
   registeredDate: string;
+  role: string;
+  createdAt: Date;
+}
+
+interface Application {
+  id: string;
+  applicantName: string;
+  serviceType: string;
+  status: string;
+  submittedDate: string;
+  userId: string;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) => {
@@ -38,8 +67,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
   
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [citizens, setCitizens] = useState<Citizen[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [systemLogs, setSystemLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Firebase Auth
+  const { user } = useFirebaseAuth();
 
   const [statsData, setStatsData] = useState([
     { 
@@ -79,42 +112,124 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
     { name: 'Network', value: 100, status: 'healthy' }
   ];
 
-  // Load data on mount
+  // Fetch data from Firebase
   useEffect(() => {
-    fetchStats();
-    fetchOfficers();
-    fetchCitizens();
+    fetchUsersFromFirebase();
+    fetchApplicationsFromFirebase();
     fetchSystemLogs();
   }, []);
 
-  // Update stats when officers/citizens change
-  useEffect(() => {
-    updateStatsData();
-  }, [officers, citizens]);
+  // Real-time listener for users
+  const fetchUsersFromFirebase = async () => {
+    try {
+      const usersQuery = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+        const officersList: Officer[] = [];
+        const citizensList: Citizen[] = [];
+        
+        snapshot.forEach((doc) => {
+          const userData = doc.data();
+          if (userData.role === 'officer') {
+            officersList.push({
+              id: doc.id,
+              name: userData.name,
+              email: userData.email,
+              department: userData.department || 'citizenship',
+              status: userData.status || 'active',
+              lastActive: userData.lastActive || new Date().toISOString(),
+              role: userData.role,
+              createdAt: userData.createdAt?.toDate() || new Date()
+            });
+          } else if (userData.role === 'citizen') {
+            citizensList.push({
+              id: doc.id,
+              name: userData.name,
+              email: userData.email,
+              applications: 0, // Will be updated from applications
+              registeredDate: userData.createdAt?.toDate().toISOString().split('T')[0] || new Date().toISOString(),
+              role: userData.role,
+              createdAt: userData.createdAt?.toDate() || new Date()
+            });
+          }
+        });
+        
+        setOfficers(officersList);
+        setCitizens(citizensList);
+        updateStatsData(officersList.length, citizensList.length);
+        addLog(`Users loaded: ${officersList.length} officers, ${citizensList.length} citizens`);
+      });
+      
+      return () => unsubscribe();
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
 
-  const updateStatsData = () => {
-    const citizenCount = citizens.length;
-    const officerCount = officers.length;
-    const applicationCount = parseInt(localStorage.getItem('applicationCount') || '0');
+  // Fetch applications from Firebase
+  const fetchApplicationsFromFirebase = async () => {
+    try {
+      const appsQuery = query(collection(db, 'applications'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(appsQuery, (snapshot) => {
+        const appsList: Application[] = [];
+        snapshot.forEach((doc) => {
+          const appData = doc.data();
+          appsList.push({
+            id: doc.id,
+            applicantName: appData.applicantName,
+            serviceType: appData.serviceType,
+            status: appData.status,
+            submittedDate: appData.submittedDate,
+            userId: appData.userId
+          });
+        });
+        setApplications(appsList);
+        
+        // Update citizen application counts
+        const citizenAppCounts: { [key: string]: number } = {};
+        appsList.forEach(app => {
+          if (app.userId) {
+            citizenAppCounts[app.userId] = (citizenAppCounts[app.userId] || 0) + 1;
+          }
+        });
+        
+        setCitizens(prev => prev.map(citizen => ({
+          ...citizen,
+          applications: citizenAppCounts[citizen.id] || 0
+        })));
+        
+        updateStatsData(officers.length, citizens.length);
+        addLog(`Applications loaded: ${appsList.length} total applications`);
+      });
+      
+      return () => unsubscribe();
+    } catch (error) {
+      console.error('Error fetching applications:', error);
+    }
+  };
+
+  const updateStatsData = (officerCount?: number, citizenCount?: number) => {
+    const totalCitizens = citizenCount !== undefined ? citizenCount : citizens.length;
+    const activeOfficers = officerCount !== undefined ? officerCount : officers.length;
+    const totalApplications = applications.length;
     
     setStatsData([
       { 
         title: language === 'np' ? 'कुल नागरिक' : 'Total Citizens', 
-        value: citizenCount, 
+        value: totalCitizens, 
         icon: Users, 
         color: 'bg-blue-100 text-blue-600',
         change: '+0%'
       },
       { 
         title: language === 'np' ? 'सक्रिय अधिकृत' : 'Active Officers', 
-        value: officerCount, 
+        value: activeOfficers, 
         icon: Shield, 
         color: 'bg-green-100 text-green-600',
         change: '+0%'
       },
       { 
         title: language === 'np' ? 'कुल आवेदन' : 'Total Applications', 
-        value: applicationCount, 
+        value: totalApplications, 
         icon: BarChart3, 
         color: 'bg-purple-100 text-purple-600',
         change: '+0%'
@@ -129,82 +244,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
     ]);
   };
 
-  const fetchStats = () => {
-    updateStatsData();
-  };
-
-  const fetchOfficers = () => {
-    const storedOfficers = localStorage.getItem('officers');
-    if (storedOfficers) {
-      try {
-        const parsedOfficers = JSON.parse(storedOfficers);
-        // Ensure status is properly typed
-        const typedOfficers: Officer[] = parsedOfficers.map((o: any) => ({
-          ...o,
-          status: o.status === 'active' ? 'active' : 'inactive'
-        }));
-        setOfficers(typedOfficers);
-      } catch (e) {
-        console.error('Error parsing officers', e);
-      }
-    } else {
-      // Sample officers with proper typing
-      const sampleOfficers: Officer[] = [
-        {
-          id: '1',
-          name: 'John Doe',
-          email: 'john@example.com',
-          department: 'citizenship',
-          status: 'active',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '2',
-          name: 'Jane Smith',
-          email: 'jane@example.com',
-          department: 'birth',
-          status: 'active',
-          lastActive: new Date().toISOString()
-        }
-      ];
-      setOfficers(sampleOfficers);
-      localStorage.setItem('officers', JSON.stringify(sampleOfficers));
-      localStorage.setItem('officerCount', sampleOfficers.length.toString());
-    }
-  };
-
-  const fetchCitizens = () => {
-    const storedCitizens = localStorage.getItem('citizens');
-    if (storedCitizens) {
-      try {
-        setCitizens(JSON.parse(storedCitizens));
-      } catch (e) {
-        console.error('Error parsing citizens', e);
-      }
-    } else {
-      // Sample citizens
-      const sampleCitizens: Citizen[] = [
-        {
-          id: '1',
-          name: 'Ram Sharma',
-          email: 'ram@example.com',
-          applications: 2,
-          registeredDate: '2024-01-15'
-        },
-        {
-          id: '2',
-          name: 'Sita Adhikari',
-          email: 'sita@example.com',
-          applications: 1,
-          registeredDate: '2024-02-20'
-        }
-      ];
-      setCitizens(sampleCitizens);
-      localStorage.setItem('citizens', JSON.stringify(sampleCitizens));
-      localStorage.setItem('citizenCount', sampleCitizens.length.toString());
-    }
-  };
-
   const fetchSystemLogs = () => {
     const storedLogs = localStorage.getItem('systemLogs');
     if (storedLogs) {
@@ -214,12 +253,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
         console.error('Error parsing logs', e);
       }
     } else {
-      // Sample logs
       const sampleLogs = [
         `[${new Date().toLocaleString()}] System started`,
-        `[${new Date().toLocaleString()}] Database connection established`,
-        `[${new Date().toLocaleString()}] 2 officers loaded`,
-        `[${new Date().toLocaleString()}] 2 citizens loaded`,
+        `[${new Date().toLocaleString()}] Firebase connected`,
+        `[${new Date().toLocaleString()}] Users loaded from Firestore`,
         `[${new Date().toLocaleString()}] System ready`
       ];
       setSystemLogs(sampleLogs);
@@ -227,7 +264,98 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
     }
   };
 
-  // Handlers for all buttons
+  const addLog = (message: string) => {
+    const newLog = `[${new Date().toLocaleString()}] ${message}`;
+    const updatedLogs = [newLog, ...systemLogs.slice(0, 99)];
+    setSystemLogs(updatedLogs);
+    localStorage.setItem('systemLogs', JSON.stringify(updatedLogs));
+  };
+
+  // Add new officer to Firebase
+  const handleAddOfficer = async (officerData: { name: string; email: string; department: string; status: 'active' | 'inactive'; lastActive: string }) => {
+  try {
+    setIsLoading(true);
+    const userRef = await addDoc(collection(db, 'users'), {
+      ...officerData,
+      role: 'officer',
+      createdAt: Timestamp.now()
+    });
+    
+    addLog(`New officer added: ${officerData.name}`);
+    return { success: true, id: userRef.id };
+  } catch (error) {
+    console.error('Error adding officer:', error);
+    return { success: false, error };
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Update officer in Firebase
+  const handleUpdateOfficer = async (officerId: string, officerData: Partial<{ name: string; email: string; department: string; status: 'active' | 'inactive'; lastActive: string }>) => {
+  try {
+    setIsLoading(true);
+    const userRef = doc(db, 'users', officerId);
+    await updateDoc(userRef, {
+      ...officerData,
+      updatedAt: Timestamp.now()
+    });
+    
+    addLog(`Officer updated: ${officerData.name}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating officer:', error);
+    return { success: false, error };
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  // Delete officer from Firebase
+  const handleDeleteOfficer = async (officerId: string, officerName: string) => {
+    try {
+      setIsLoading(true);
+      await deleteDoc(doc(db, 'users', officerId));
+      addLog(`Officer deleted: ${officerName}`);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting officer:', error);
+      return { success: false, error };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Toggle officer status
+  const handleToggleOfficerStatus = async (officerId: string, currentStatus: 'active' | 'inactive') => {
+    try {
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+      const userRef = doc(db, 'users', officerId);
+      await updateDoc(userRef, {
+        status: newStatus,
+        updatedAt: Timestamp.now()
+      });
+      addLog(`Officer status changed to ${newStatus}`);
+    } catch (error) {
+      console.error('Error toggling status:', error);
+    }
+  };
+
+  // Delete citizen from Firebase
+  const handleDeleteCitizen = async (citizenId: string, citizenName: string) => {
+    try {
+      setIsLoading(true);
+      await deleteDoc(doc(db, 'users', citizenId));
+      addLog(`Citizen deleted: ${citizenName}`);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting citizen:', error);
+      return { success: false, error };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleNotificationsClick = () => {
     setShowNotifications(!showNotifications);
   };
@@ -238,7 +366,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
     }
   };
 
-  const handleAddOfficer = () => {
+  const handleAddOfficerClick = () => {
     setUserModalType('officer');
     setSelectedUser(null);
     setShowUserModal(true);
@@ -250,86 +378,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
     setShowUserModal(true);
   };
 
-  const handleDeleteUser = (userId: string, type: 'officer' | 'citizen') => {
-    if (type === 'officer') {
-      const updatedOfficers = officers.filter(o => o.id !== userId);
-      setOfficers(updatedOfficers);
-      localStorage.setItem('officers', JSON.stringify(updatedOfficers));
-      localStorage.setItem('officerCount', updatedOfficers.length.toString());
-    } else {
-      const updatedCitizens = citizens.filter(c => c.id !== userId);
-      setCitizens(updatedCitizens);
-      localStorage.setItem('citizens', JSON.stringify(updatedCitizens));
-      localStorage.setItem('citizenCount', updatedCitizens.length.toString());
-    }
-    updateStatsData();
-    addLog(`${type === 'officer' ? 'Officer' : 'Citizen'} deleted: ${userId}`);
-  };
-
-  const handleUserSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const formData = new FormData(form);
-    
-    if (userModalType === 'officer') {
-      // Get status with proper type
-      const statusValue = formData.get('status') as string;
-      const status: 'active' | 'inactive' = statusValue === 'active' ? 'active' : 'inactive';
-      
-      const officerData: Officer = {
-        id: selectedUser?.id || Date.now().toString(),
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-        department: formData.get('department') as string,
-        status: status,
-        lastActive: new Date().toISOString()
-      };
-
-      let updatedOfficers: Officer[];
-      if (selectedUser) {
-        updatedOfficers = officers.map(o => o.id === selectedUser.id ? officerData : o);
-        addLog(`Officer updated: ${officerData.name}`);
+  const handleDeleteUser = async (userId: string, type: 'officer' | 'citizen') => {
+    if (window.confirm(language === 'np' ? 'के तपाईं यो प्रयोगकर्ता हटाउन निश्चित हुनुहुन्छ?' : 'Are you sure you want to delete this user?')) {
+      if (type === 'officer') {
+        const officer = officers.find(o => o.id === userId);
+        if (officer) {
+          await handleDeleteOfficer(userId, officer.name);
+        }
       } else {
-        updatedOfficers = [...officers, officerData];
-        addLog(`New officer added: ${officerData.name}`);
+        const citizen = citizens.find(c => c.id === userId);
+        if (citizen) {
+          await handleDeleteCitizen(userId, citizen.name);
+        }
       }
-      
-      setOfficers(updatedOfficers);
-      localStorage.setItem('officers', JSON.stringify(updatedOfficers));
-      localStorage.setItem('officerCount', updatedOfficers.length.toString());
-    } else {
-      const citizenData: Citizen = {
-        id: selectedUser?.id || Date.now().toString(),
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-        applications: selectedUser ? (selectedUser as Citizen).applications : 0,
-        registeredDate: selectedUser ? (selectedUser as Citizen).registeredDate : new Date().toISOString().split('T')[0]
-      };
-
-      let updatedCitizens: Citizen[];
-      if (selectedUser) {
-        updatedCitizens = citizens.map(c => c.id === selectedUser.id ? citizenData : c);
-        addLog(`Citizen updated: ${citizenData.name}`);
-      } else {
-        updatedCitizens = [...citizens, citizenData];
-        addLog(`New citizen added: ${citizenData.name}`);
-      }
-      
-      setCitizens(updatedCitizens);
-      localStorage.setItem('citizens', JSON.stringify(updatedCitizens));
-      localStorage.setItem('citizenCount', updatedCitizens.length.toString());
+      updateStatsData();
     }
-    
-    updateStatsData();
-    setShowUserModal(false);
   };
 
-  const addLog = (message: string) => {
-    const newLog = `[${new Date().toLocaleString()}] ${message}`;
-    const updatedLogs = [newLog, ...systemLogs];
-    setSystemLogs(updatedLogs);
-    localStorage.setItem('systemLogs', JSON.stringify(updatedLogs));
-  };
+  const handleUserSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  const form = e.target as HTMLFormElement;
+  const formData = new FormData(form);
+  
+  if (userModalType === 'officer') {
+    // Properly type the status
+    const statusValue = formData.get('status') as string;
+    const status: 'active' | 'inactive' = statusValue === 'active' ? 'active' : 'inactive';
+    
+    const officerData = {
+      name: formData.get('name') as string,
+      email: formData.get('email') as string,
+      department: formData.get('department') as string,
+      status: status,
+      lastActive: new Date().toISOString()
+    };
+    
+    if (selectedUser) {
+      await handleUpdateOfficer(selectedUser.id, officerData);
+    } else {
+      await handleAddOfficer(officerData);
+    }
+  } else {
+    // For citizens, we don't typically add via admin - they register themselves
+    alert(language === 'np' ? 'नागरिकहरू आफैं दर्ता हुन्छन्' : 'Citizens register themselves');
+  }
+  
+  setShowUserModal(false);
+};
 
   const handleSystemSettings = () => {
     setShowSettingsModal(true);
@@ -383,7 +478,7 @@ SYSTEM REPORT - ${new Date().toLocaleString()}
 ========================================
 Total Citizens: ${citizens.length}
 Active Officers: ${officers.length}
-Total Applications: ${localStorage.getItem('applicationCount') || '0'}
+Total Applications: ${applications.length}
 System Health: 100%
 ========================================
 Officers List:
@@ -391,6 +486,12 @@ ${officers.map(o => `- ${o.name} (${o.department}) - ${o.status}`).join('\n')}
 
 Citizens List:
 ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
+
+Applications by Status:
+- Pending: ${applications.filter(a => a.status === 'pending').length}
+- Reviewed: ${applications.filter(a => a.status === 'reviewed').length}
+- Approved: ${applications.filter(a => a.status === 'approved').length}
+- Rejected: ${applications.filter(a => a.status === 'rejected').length}
 ========================================
     `;
   };
@@ -415,7 +516,7 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
     const backup = {
       citizens,
       officers,
-      applications: JSON.parse(localStorage.getItem('applications') || '[]'),
+      applications,
       settings: JSON.parse(localStorage.getItem('systemSettings') || '{}'),
       permissions: JSON.parse(localStorage.getItem('permissions') || '{}'),
       timestamp: new Date().toISOString()
@@ -441,27 +542,14 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
         try {
           const backup = JSON.parse(e.target?.result as string);
           
-          if (backup.citizens) {
-            setCitizens(backup.citizens);
-            localStorage.setItem('citizens', JSON.stringify(backup.citizens));
-            localStorage.setItem('citizenCount', backup.citizens.length.toString());
-          }
-          if (backup.officers) {
-            // Ensure officers have proper status typing
-            const typedOfficers: Officer[] = backup.officers.map((o: any) => ({
-              ...o,
-              status: o.status === 'active' ? 'active' : 'inactive'
-            }));
-            setOfficers(typedOfficers);
-            localStorage.setItem('officers', JSON.stringify(typedOfficers));
-            localStorage.setItem('officerCount', typedOfficers.length.toString());
-          }
-          if (backup.applications) localStorage.setItem('applications', JSON.stringify(backup.applications));
-          if (backup.settings) localStorage.setItem('systemSettings', JSON.stringify(backup.settings));
-          if (backup.permissions) localStorage.setItem('permissions', JSON.stringify(backup.permissions));
+          // Note: Restoring to Firebase would require more complex logic
+          // This is a simplified version that updates local state
+          if (backup.citizens) setCitizens(backup.citizens);
+          if (backup.officers) setOfficers(backup.officers);
+          if (backup.applications) setApplications(backup.applications);
           
           updateStatsData();
-          addLog('System restored from backup');
+          addLog('System restored from backup (local only)');
           setShowRestoreModal(false);
         } catch (error) {
           alert('Invalid backup file');
@@ -476,19 +564,6 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
     setShowLogsModal(true);
   };
 
-  const handleToggleOfficerStatus = (officerId: string) => {
-    const updatedOfficers: Officer[] = officers.map(o => 
-      o.id === officerId ? { 
-        ...o, 
-        status: o.status === 'active' ? 'inactive' : 'active' 
-      } : o
-    );
-    setOfficers(updatedOfficers);
-    localStorage.setItem('officers', JSON.stringify(updatedOfficers));
-    addLog(`Officer status toggled`);
-  };
-
-  // Render content based on active tab
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
@@ -520,7 +595,7 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
               
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <button 
-                  onClick={handleAddOfficer}
+                  onClick={handleAddOfficerClick}
                   className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-colors"
                 >
                   <UserPlus size={32} className="text-gray-400 mb-3" />
@@ -698,7 +773,7 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
                   {language === 'np' ? 'अधिकृतहरू' : 'Officers'}
                 </h3>
                 <button
-                  onClick={handleAddOfficer}
+                  onClick={handleAddOfficerClick}
                   className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   <Plus size={20} />
@@ -721,7 +796,7 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
                           {officer.status}
                         </span>
                         <button
-                          onClick={() => handleToggleOfficerStatus(officer.id)}
+                          onClick={() => handleToggleOfficerStatus(officer.id, officer.status)}
                           className="p-2 hover:bg-gray-100 rounded-lg"
                         >
                           {officer.status === 'active' ? <XCircle size={18} className="text-red-500" /> : <CheckCircle size={18} className="text-green-500" />}
@@ -919,8 +994,7 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
                   <p className="text-gray-600 mb-4">Download applications statistics</p>
                   <button
                     onClick={() => {
-                      const apps = JSON.parse(localStorage.getItem('applications') || '[]');
-                      const report = `Applications Report\nTotal: ${apps.length}`;
+                      const report = `Applications Report\nTotal: ${applications.length}\n\nPending: ${applications.filter(a => a.status === 'pending').length}\nReviewed: ${applications.filter(a => a.status === 'reviewed').length}\nApproved: ${applications.filter(a => a.status === 'approved').length}\nRejected: ${applications.filter(a => a.status === 'rejected').length}`;
                       downloadFile(report, 'applications_report.txt');
                     }}
                     className="flex items-center justify-center space-x-2 w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
@@ -935,7 +1009,7 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
                   <p className="text-gray-600 mb-4">Download users statistics</p>
                   <button
                     onClick={() => {
-                      const report = `Users Report\nOfficers: ${officers.length}\nCitizens: ${citizens.length}`;
+                      const report = `Users Report\nOfficers: ${officers.length}\nCitizens: ${citizens.length}\n\nOfficers List:\n${officers.map(o => `- ${o.name} (${o.department})`).join('\n')}\n\nCitizens List:\n${citizens.map(c => `- ${c.name} (${c.applications} apps)`).join('\n')}`;
                       downloadFile(report, 'users_report.txt');
                     }}
                     className="flex items-center justify-center space-x-2 w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -1094,6 +1168,13 @@ ${citizens.map(c => `- ${c.name} (${c.applications} applications)`).join('\n')}
               ? 'तपाईंले यहाँबाट सम्पूर्ण प्रणाली व्यवस्थापन गर्न सक्नुहुन्छ। प्रयोगकर्ताहरू, सेवाहरू, र सिस्टम सेटिङहरू व्यवस्थापन गर्नुहोस्।' 
               : 'You can manage the entire system from here. Manage users, services, and system settings.'}
           </p>
+          <div className="bg-white/20 rounded-lg p-4 inline-block">
+            <p className="text-sm">
+              {language === 'np' 
+                ? `${officers.length} अधिकृत, ${citizens.length} नागरिक` 
+                : `${officers.length} officers, ${citizens.length} citizens`}
+            </p>
+          </div>
         </div>
 
         {/* Tab Content */}

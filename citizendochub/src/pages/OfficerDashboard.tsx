@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import type { Language } from '../types';
 import { Shield, Search, Filter, Eye, CheckCircle, XCircle, Clock, Bell, LogOut, Users, FileText, BarChart, Download, UserPlus, AlertCircle } from 'lucide-react';
+import { useFirebaseAuth } from '../hooks/useFirebaseAuth';
+import { db } from '../firebase/config';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  updateDoc, 
+  doc,
+  Timestamp
+} from 'firebase/firestore';
 
 interface OfficerDashboardProps {
   language: Language;
@@ -18,6 +30,8 @@ interface Application {
   status: 'pending' | 'reviewed' | 'approved' | 'rejected';
   department: string;
   reviewNotes?: string;
+  userId?: string;
+  userEmail?: string;
 }
 
 const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout, onDepartmentChange }) => {
@@ -27,7 +41,7 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   const [selectedService, setSelectedService] = useState<string>('all');
   const [showNotifications, setShowNotifications] = useState(false);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState<Application | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
@@ -35,56 +49,53 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  
+  // Firebase Auth
+  const { user, userRole } = useFirebaseAuth();
 
-  // Load applications from localStorage on component mount
+  // Real-time listener for applications from Firebase
   useEffect(() => {
-    fetchApplications();
-    
-    // Listen for new applications
-    const handleStorageChange = () => {
-      fetchApplications();
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+    if (!user) return;
 
-  // Fetch applications from localStorage
-  const fetchApplications = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      const storedApps = localStorage.getItem('citizenApplications');
-      if (storedApps) {
-        setApplications(JSON.parse(storedApps));
-      } else {
-        // Sample demo data
-        const sampleApps: Application[] = [
-          {
-            id: 'APP-001',
-            applicantName: language === 'np' ? 'राम बहादुर सिंह' : 'Ram Bahadur Singh',
-            serviceType: 'Citizenship Certificate',
-            submittedDate: '2024-01-15',
-            citizenId: '01-04-73-02-01234',
-            documents: ['citizenship.pdf', 'photo.jpg'],
-            status: 'pending',
-            department: 'citizenship'
-          },
-          {
-            id: 'APP-002',
-            applicantName: language === 'np' ? 'सीता शर्मा' : 'Sita Sharma',
-            serviceType: 'Birth Registration',
-            submittedDate: '2024-01-14',
-            citizenId: '02-05-74-03-02345',
-            documents: ['birth_certificate.pdf'],
-            status: 'reviewed',
-            department: 'birth'
-          }
-        ];
-        setApplications(sampleApps);
-        localStorage.setItem('citizenApplications', JSON.stringify(sampleApps));
-      }
+    let applicationsQuery;
+    
+    if (selectedDepartment) {
+      applicationsQuery = query(
+        collection(db, 'applications'),
+        where('department', '==', selectedDepartment),
+        orderBy('submittedDate', 'desc')
+      );
+    } else {
+      applicationsQuery = query(
+        collection(db, 'applications'),
+        orderBy('submittedDate', 'desc')
+      );
+    }
+    
+    const unsubscribe = onSnapshot(applicationsQuery, (snapshot) => {
+      const apps: Application[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        apps.push({
+          id: doc.id,
+          applicantName: data.applicantName,
+          serviceType: data.serviceType,
+          submittedDate: data.submittedDate,
+          citizenId: data.citizenId,
+          documents: data.documents || [],
+          status: data.status,
+          department: data.department,
+          reviewNotes: data.reviewNotes,
+          userId: data.userId,
+          userEmail: data.userEmail
+        });
+      });
+      setApplications(apps);
       setIsLoading(false);
-    }, 500);
-  };
+    });
+    
+    return () => unsubscribe();
+  }, [user, selectedDepartment]);
 
   const stats = [
     { 
@@ -114,19 +125,18 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   ];
 
   const departments = [
-    { id: 'citizenship', name: language === 'np' ? 'नागरिकता विभाग' : 'Citizenship Department' },
-    { id: 'birth', name: language === 'np' ? 'जन्म दर्ता विभाग' : 'Birth Registration Department' },
-    { id: 'marriage', name: language === 'np' ? 'विवाह दर्ता विभाग' : 'Marriage Registration Department' }
+    { id: 'citizenship-certificate', name: language === 'np' ? 'नागरिकता विभाग' : 'Citizenship Department' },
+    { id: 'birth-certificate', name: language === 'np' ? 'जन्म दर्ता विभाग' : 'Birth Registration Department' },
+    { id: 'marriage-registration', name: language === 'np' ? 'विवाह दर्ता विभाग' : 'Marriage Registration Department' }
   ];
 
   const services = [
     { id: 'all', name: language === 'np' ? 'सबै सेवा' : 'All Services' },
-    { id: 'citizenship', name: language === 'np' ? 'नागरिकता प्रमाणपत्र' : 'Citizenship Certificate' },
-    { id: 'birth', name: language === 'np' ? 'जन्म दर्ता' : 'Birth Certificate' },
-    { id: 'marriage', name: language === 'np' ? 'विवाह दर्ता' : 'Marriage Registration' }
+    { id: 'citizenship-certificate', name: language === 'np' ? 'नागरिकता प्रमाणपत्र' : 'Citizenship Certificate' },
+    { id: 'birth-certificate', name: language === 'np' ? 'जन्म दर्ता' : 'Birth Certificate' },
+    { id: 'marriage-registration', name: language === 'np' ? 'विवाह दर्ता' : 'Marriage Registration' }
   ];
 
-  // Department selection
   const handleDepartmentSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedDepartment(e.target.value);
     if (onDepartmentChange) {
@@ -135,25 +145,21 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     showToast(language === 'np' ? 'विभाग परिवर्तन गरियो' : 'Department changed');
   };
 
-  // Service selection - FIXED: Added this function
   const handleServiceSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedService(e.target.value);
     showToast(language === 'np' ? 'सेवा फिल्टर गरियो' : 'Service filtered');
   };
 
-  // Notifications click
   const handleNotificationsClick = () => {
     setShowNotifications(!showNotifications);
   };
 
-  // Search functionality
   const handleSearch = () => {
     if (searchQuery.trim()) {
       showToast(language === 'np' ? `"${searchQuery}" को लागि खोज्दै...` : `Searching for "${searchQuery}"...`);
     }
   };
 
-  // Support Center - Open modal
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [supportQuery, setSupportQuery] = useState('');
   
@@ -169,7 +175,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     }
   };
 
-  // Download Reports
   const handleDownloadReportsClick = () => {
     const filteredApps = getFilteredApplicationsByFilters();
     const reportContent = generatePDFReport(filteredApps);
@@ -239,7 +244,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     window.URL.revokeObjectURL(url);
   };
 
-  // Documents - Open modal
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   
   const handleDocumentsClick = () => {
@@ -250,7 +254,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     showToast(language === 'np' ? `${docName} डाउनलोड सुरु भयो` : `Downloading ${docName}...`);
   };
 
-  // Stat card click
   const handleStatClick = (statTitle: string) => {
     if (statTitle.includes('Pending') || statTitle.includes('प्रक्रियाधीन')) setActiveTab('pending');
     else if (statTitle.includes('Reviewed') || statTitle.includes('समीक्षा')) setActiveTab('reviewed');
@@ -259,7 +262,7 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     showToast(language === 'np' ? `${statTitle} आवेदनहरू देखाउँदै` : `Showing ${statTitle} applications`);
   };
 
-  // Update application status with review notes
+  // Update application status in Firebase
   const handleStatusUpdate = (application: Application, newStatus: 'pending' | 'reviewed' | 'approved' | 'rejected') => {
     if (newStatus === 'reviewed') {
       setShowReviewModal(application);
@@ -269,23 +272,27 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     }
   };
 
-  const confirmStatusUpdate = (applicationId: string, newStatus: string, notes?: string) => {
-    const updatedApps = applications.map(app => 
-      app.id === applicationId 
-        ? { ...app, status: newStatus as any, reviewNotes: notes } 
-        : app
-    );
-    setApplications(updatedApps);
-    localStorage.setItem('citizenApplications', JSON.stringify(updatedApps));
-    
-    const statusMessages: Record<string, string> = {
-      reviewed: language === 'np' ? 'समीक्षामा राखियो' : 'Marked as reviewed',
-      approved: language === 'np' ? 'स्वीकृत गरियो' : 'Approved',
-      rejected: language === 'np' ? 'अस्वीकृत गरियो' : 'Rejected'
-    };
-    
-    showToast(statusMessages[newStatus] || 'Status updated');
-    setShowReviewModal(null);
+  const confirmStatusUpdate = async (applicationId: string, newStatus: string, notes?: string) => {
+    try {
+      const appRef = doc(db, 'applications', applicationId);
+      await updateDoc(appRef, {
+        status: newStatus,
+        ...(notes && { reviewNotes: notes }),
+        updatedAt: Timestamp.now()
+      });
+      
+      const statusMessages: Record<string, string> = {
+        reviewed: language === 'np' ? 'समीक्षामा राखियो' : 'Marked as reviewed',
+        approved: language === 'np' ? 'स्वीकृत गरियो' : 'Approved',
+        rejected: language === 'np' ? 'अस्वीकृत गरियो' : 'Rejected'
+      };
+      
+      showToast(statusMessages[newStatus] || 'Status updated');
+      setShowReviewModal(null);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      showToast(language === 'np' ? 'अपडेट गर्न असफल' : 'Failed to update');
+    }
   };
 
   const handleReviewSubmit = () => {
@@ -349,7 +356,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     return filtered;
   };
 
-  // Toast notification
   const showToast = (message: string) => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(''), 3000);
@@ -358,13 +364,11 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   const filteredApplications = getFilteredApplications();
   const pendingCount = applications.filter(a => a.status === 'pending').length;
 
-  // Apply filter
   const handleApplyFilters = () => {
     setShowFilterPanel(false);
     showToast(language === 'np' ? 'फिल्टर लागू गरियो' : 'Filters applied');
   };
 
-  // Reset filters
   const handleResetFilters = () => {
     setDateFrom('');
     setDateTo('');

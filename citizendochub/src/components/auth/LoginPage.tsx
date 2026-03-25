@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Language, UserType } from '../../types';
 import { Mail, Lock, Eye, EyeOff, User, Smartphone, Shield, Building, Key, X } from 'lucide-react';
+import { useFirebaseAuth } from '../../hooks/useFirebaseAuth';
 
 interface LoginProps {
   language: Language;
@@ -27,6 +28,9 @@ const Login: React.FC<LoginProps> = ({
   const [forgotPasswordMethod, setForgotPasswordMethod] = useState<'email' | 'phone' | 'citizenId'>('email');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Firebase Auth Hook
+  const { signIn, signUp } = useFirebaseAuth();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -68,7 +72,7 @@ const Login: React.FC<LoginProps> = ({
     citizenId: ''
   });
 
-  // Validation functions
+  // Validation functions (keep your existing validation)
   const validatePhoneNumber = (phone: string): boolean => {
     const phoneRegex = /^(98|97)\d{8}$/;
     return phoneRegex.test(phone);
@@ -84,6 +88,7 @@ const Login: React.FC<LoginProps> = ({
     return citizenIdRegex.test(citizenId);
   };
 
+  // Keep all your existing input handlers (they remain the same)
   const handlePhoneInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '' || /^\d{0,10}$/.test(value)) {
@@ -261,7 +266,6 @@ const Login: React.FC<LoginProps> = ({
       isValid = false;
     }
     
-    // Citizen ID validation only for non-admin users
     const isAdmin = registrationData.userType === 'admin';
     if (!isAdmin) {
       if (!registrationData.citizenId.trim()) {
@@ -293,6 +297,7 @@ const Login: React.FC<LoginProps> = ({
     return isValid;
   };
 
+  // UPDATED: Firebase Integration for Login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -304,24 +309,43 @@ const Login: React.FC<LoginProps> = ({
     setIsLoading(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Get the email from the appropriate field
+      let email = '';
+      if (loginMethod === 'email') {
+        email = formData.email;
+      } else if (loginMethod === 'phone') {
+        // For phone login, use phone as email in Firebase (or map to existing user)
+        email = `${formData.phone}@citizen.com`;
+      } else if (loginMethod === 'citizenId') {
+        // For citizen ID login, use citizen ID as email
+        email = `${formData.citizenId.replace(/-/g, '')}@citizen.com`;
+      }
       
-      // In a real application, you would make an API call here
-      // For now, we'll simulate a successful login
-      const credentials = {
-        email: formData.email,
-        phone: formData.phone,
-        citizenId: formData.citizenId,
-        name: userType === 'citizen' ? 'Citizen User' : 
-              userType === 'officer' ? 'Government Officer' : 
-              'Administrator',
-        userType: userType
-      };
+      // Call Firebase sign in
+      const result = await signIn(email, formData.password);
       
-      // Call the onLogin prop with user data
-      onLogin(userType, credentials);
-      
+      if (result.success) {
+        // Prepare credentials for the onLogin callback
+        const credentials = {
+          email: email,
+          phone: formData.phone,
+          citizenId: formData.citizenId,
+          name: userType === 'citizen' ? 'Citizen User' : 
+                userType === 'officer' ? 'Government Officer' : 
+                'Administrator',
+          userType: userType,
+          uid: result.user?.uid
+        };
+        
+        // Call the onLogin prop with user data
+        onLogin(userType, credentials);
+      } else {
+        setErrorMessage(
+          language === 'np' 
+            ? 'लगइन गर्दा त्रुटि भयो। कृपया पुनः प्रयास गर्नुहोस्।' 
+            : 'Error during login. Please try again.'
+        );
+      }
     } catch (error) {
       setErrorMessage(
         language === 'np' 
@@ -333,20 +357,42 @@ const Login: React.FC<LoginProps> = ({
     }
   };
 
-  const handleRegistrationSubmit = (e: React.FormEvent) => {
+  // UPDATED: Firebase Integration for Registration
+  const handleRegistrationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateRegistrationForm()) {
       return;
     }
     
-    // In a real application, you would make an API call here
-    // For now, show a success message
-    alert(language === 'np' 
-      ? 'दर्ता सफल भयो! कृपया लगइन गर्नुहोस्।' 
-      : 'Registration successful! Please login.');
+    setIsLoading(true);
     
-    setShowRegistrationForm(false);
+    try {
+      // Call Firebase sign up
+      const result = await signUp(
+        registrationData.email, 
+        registrationData.password, 
+        registrationData.fullName,
+        registrationData.userType
+      );
+      
+      if (result.success) {
+        alert(language === 'np' 
+          ? 'दर्ता सफल भयो! कृपया लगइन गर्नुहोस्।' 
+          : 'Registration successful! Please login.');
+        setShowRegistrationForm(false);
+      } else {
+        alert(language === 'np' 
+          ? 'दर्ता गर्दा त्रुटि भयो। कृपया पुनः प्रयास गर्नुहोस्।' 
+          : 'Registration failed. Please try again.');
+      }
+    } catch (error) {
+      alert(language === 'np' 
+        ? 'दर्ता गर्दा त्रुटि भयो। कृपया पुनः प्रयास गर्नुहोस्।' 
+        : 'Registration failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleForgotPasswordSubmit = (e: React.FormEvent) => {
@@ -363,7 +409,7 @@ const Login: React.FC<LoginProps> = ({
       return;
     }
     
-    // In a real application, you would make an API call here
+    // In a real application, you would implement password reset via Firebase
     alert(language === 'np' 
       ? 'पासवर्ड रिसेट लिंक तपाईंको इमेलमा पठाइएको छ।' 
       : 'Password reset link has been sent to your email.');
@@ -373,6 +419,10 @@ const Login: React.FC<LoginProps> = ({
   const handleNewUserClick = () => {
     setShowRegistrationForm(true);
   };
+
+  // Keep all your existing JSX and render methods exactly as they are
+  // (The loginMethods, userTypes, renderRegistrationFormModal, 
+  // renderForgotPasswordModal, and return statement remain unchanged)
 
   const loginMethods = [
     {
@@ -401,7 +451,6 @@ const Login: React.FC<LoginProps> = ({
     { id: 'admin' as UserType, icon: Building, labelEn: 'Administrator', labelNp: 'प्रशासक' }
   ];
 
-  // Helper function to get form value based on login method
   const getFormValue = () => {
     switch (loginMethod) {
       case 'email': return formData.email;
@@ -411,7 +460,7 @@ const Login: React.FC<LoginProps> = ({
     }
   };
 
-  // Registration Form Modal
+  // Keep all your existing modal render functions exactly as they are
   const renderRegistrationFormModal = () => {
     if (!showRegistrationForm) return null;
 
@@ -585,9 +634,20 @@ const Login: React.FC<LoginProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg mt-6"
+              disabled={isLoading}
+              className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg mt-6 disabled:opacity-50"
             >
-              {language === 'np' ? 'दर्ता गर्नुहोस्' : 'Register'}
+              {isLoading ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  {language === 'np' ? 'दर्ता गर्दै...' : 'Registering...'}
+                </span>
+              ) : (
+                language === 'np' ? 'दर्ता गर्नुहोस्' : 'Register'
+              )}
             </button>
 
             <div className="text-center pt-4">
@@ -721,6 +781,7 @@ const Login: React.FC<LoginProps> = ({
     );
   };
 
+  // Main return statement (unchanged)
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100 flex items-center justify-center p-4">

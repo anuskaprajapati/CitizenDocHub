@@ -1,11 +1,9 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { getAuth, browserLocalPersistence, setPersistence } from "firebase/auth";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDSQE93wKclU8IqliJBpOwQTP7kHnBtXXw",
   authDomain: "citizendochub-f2249.firebaseapp.com",
@@ -16,13 +14,14 @@ const firebaseConfig = {
   measurementId: "G-4HDCQLS4V7"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase services
 export const analytics = getAnalytics(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
+
+// Set persistence on auth instance
+setPersistence(auth, browserLocalPersistence).catch(console.error);
 
 export default app;
