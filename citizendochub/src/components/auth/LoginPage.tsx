@@ -8,7 +8,7 @@ interface LoginProps {
   onToggleLanguage: () => void;
   onNavigateToRegister: () => void;
   onForgotPassword: () => void;
-  onLogin: (userType: UserType, credentials: any) => void;
+  onLogin: (userType: UserType, credentials: { email: string; password: string }) => void;
   onBackToHome?: () => void;
 }
 
@@ -72,7 +72,7 @@ const Login: React.FC<LoginProps> = ({
     citizenId: ''
   });
 
-  // Validation functions (keep your existing validation)
+  // Validation functions
   const validatePhoneNumber = (phone: string): boolean => {
     const phoneRegex = /^(98|97)\d{8}$/;
     return phoneRegex.test(phone);
@@ -88,7 +88,6 @@ const Login: React.FC<LoginProps> = ({
     return citizenIdRegex.test(citizenId);
   };
 
-  // Keep all your existing input handlers (they remain the same)
   const handlePhoneInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '' || /^\d{0,10}$/.test(value)) {
@@ -297,7 +296,7 @@ const Login: React.FC<LoginProps> = ({
     return isValid;
   };
 
-  // UPDATED: Firebase Integration for Login
+  // FIXED: Firebase Integration for Login - Now properly passes password
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -314,39 +313,43 @@ const Login: React.FC<LoginProps> = ({
       if (loginMethod === 'email') {
         email = formData.email;
       } else if (loginMethod === 'phone') {
-        // For phone login, use phone as email in Firebase (or map to existing user)
         email = `${formData.phone}@citizen.com`;
       } else if (loginMethod === 'citizenId') {
-        // For citizen ID login, use citizen ID as email
         email = `${formData.citizenId.replace(/-/g, '')}@citizen.com`;
       }
       
+      // Get the password from formData
+      const password = formData.password;
+      
+      // Validate email and password are not empty
+      if (!email || !password) {
+        setErrorMessage(
+          language === 'np' 
+            ? 'इमेल र पासवर्ड आवश्यक छ' 
+            : 'Email and password are required'
+        );
+        setIsLoading(false);
+        return;
+      }
+      
+      console.log('Attempting login with email:', email);
+      
       // Call Firebase sign in
-      const result = await signIn(email, formData.password);
+      const result = await signIn(email, password);
       
       if (result.success) {
-        // Prepare credentials for the onLogin callback
-        const credentials = {
-          email: email,
-          phone: formData.phone,
-          citizenId: formData.citizenId,
-          name: userType === 'citizen' ? 'Citizen User' : 
-                userType === 'officer' ? 'Government Officer' : 
-                'Administrator',
-          userType: userType,
-          uid: result.user?.uid
-        };
-        
-        // Call the onLogin prop with user data
-        onLogin(userType, credentials);
+        console.log('Firebase login successful');
+        // After successful Firebase login, call onLogin with email and password
+        onLogin(userType, { email, password });
       } else {
         setErrorMessage(
           language === 'np' 
-            ? 'लगइन गर्दा त्रुटि भयो। कृपया पुनः प्रयास गर्नुहोस्।' 
-            : 'Error during login. Please try again.'
+            ? `लगइन गर्दा त्रुटि: ${result.error}` 
+            : `Login failed: ${result.error}`
         );
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Login error:', error);
       setErrorMessage(
         language === 'np' 
           ? 'लगइन गर्दा त्रुटि भयो। कृपया पुनः प्रयास गर्नुहोस्।' 
@@ -357,7 +360,7 @@ const Login: React.FC<LoginProps> = ({
     }
   };
 
-  // UPDATED: Firebase Integration for Registration
+  // Firebase Integration for Registration
   const handleRegistrationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -368,7 +371,6 @@ const Login: React.FC<LoginProps> = ({
     setIsLoading(true);
     
     try {
-      // Call Firebase sign up
       const result = await signUp(
         registrationData.email, 
         registrationData.password, 
@@ -409,7 +411,6 @@ const Login: React.FC<LoginProps> = ({
       return;
     }
     
-    // In a real application, you would implement password reset via Firebase
     alert(language === 'np' 
       ? 'पासवर्ड रिसेट लिंक तपाईंको इमेलमा पठाइएको छ।' 
       : 'Password reset link has been sent to your email.');
@@ -419,10 +420,6 @@ const Login: React.FC<LoginProps> = ({
   const handleNewUserClick = () => {
     setShowRegistrationForm(true);
   };
-
-  // Keep all your existing JSX and render methods exactly as they are
-  // (The loginMethods, userTypes, renderRegistrationFormModal, 
-  // renderForgotPasswordModal, and return statement remain unchanged)
 
   const loginMethods = [
     {
@@ -460,7 +457,6 @@ const Login: React.FC<LoginProps> = ({
     }
   };
 
-  // Keep all your existing modal render functions exactly as they are
   const renderRegistrationFormModal = () => {
     if (!showRegistrationForm) return null;
 
@@ -781,7 +777,6 @@ const Login: React.FC<LoginProps> = ({
     );
   };
 
-  // Main return statement (unchanged)
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100 flex items-center justify-center p-4">

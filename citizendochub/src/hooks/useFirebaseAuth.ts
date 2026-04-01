@@ -9,7 +9,7 @@ import {
   setPersistence,
   browserLocalPersistence
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';  // Added setDoc here
 
 export const useFirebaseAuth = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -25,14 +25,21 @@ export const useFirebaseAuth = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log('Auth state changed:', firebaseUser?.email);
       setUser(firebaseUser);
       
       if (firebaseUser) {
         try {
+          // Get user role from Firestore
+          console.log('Fetching user document for UID:', firebaseUser.uid);
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          
           if (userDoc.exists()) {
-            setUserRole(userDoc.data().role);
+            const role = userDoc.data().role;
+            console.log('User role from Firestore:', role);
+            setUserRole(role);
           } else {
+            console.log('User document not found in Firestore!');
             setUserRole('citizen');
           }
         } catch (error) {
@@ -51,7 +58,7 @@ export const useFirebaseAuth = () => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      console.log('signIn called with:', email);
+      console.log('signIn called with email:', email);
       if (!email || !password) {
         throw new Error('Email and password are required');
       }

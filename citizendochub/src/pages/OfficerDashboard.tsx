@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Language } from '../types';
-import { Shield, Search, Filter, Eye, CheckCircle, XCircle, Clock, Bell, LogOut, Users, FileText, BarChart, Download, UserPlus, AlertCircle } from 'lucide-react';
+import { Shield, Search, Filter, Eye, CheckCircle, XCircle, Clock, Bell, LogOut, Users, FileText, BarChart, Download } from 'lucide-react';
 import { useFirebaseAuth } from '../hooks/useFirebaseAuth';
 import { db } from '../firebase/config';
 import { 
@@ -17,7 +17,6 @@ import {
 interface OfficerDashboardProps {
   language: Language;
   onLogout: () => void;
-  onDepartmentChange?: (department: string) => void;
 }
 
 interface Application {
@@ -25,16 +24,14 @@ interface Application {
   applicantName: string;
   serviceType: string;
   submittedDate: string;
-  citizenId: string;
-  documents: string[];
   status: 'pending' | 'reviewed' | 'approved' | 'rejected';
   department: string;
-  reviewNotes?: string;
+  citizenId: string;
   userId?: string;
-  userEmail?: string;
+  reviewNotes?: string;
 }
 
-const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout, onDepartmentChange }) => {
+const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'pending' | 'reviewed' | 'approved' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('');
@@ -43,23 +40,28 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState<Application | null>(null);
-  const [reviewNotes, setReviewNotes] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
   
   // Firebase Auth
-  const { user, userRole } = useFirebaseAuth();
+  const { user, userRole, loading: authLoading } = useFirebaseAuth();
+
+  // Check if user is authorized (officer or admin)
+  useEffect(() => {
+    if (!authLoading && user && userRole !== 'officer' && userRole !== 'admin') {
+      alert(language === 'np' 
+        ? 'तपाईंसँग यो पृष्ठ हेर्ने अनुमति छैन।' 
+        : 'You do not have permission to view this page.');
+      onLogout();
+    }
+  }, [user, userRole, authLoading, language, onLogout]);
 
   // Real-time listener for applications from Firebase
   useEffect(() => {
-    if (!user) return;
+    if (!user || (userRole !== 'officer' && userRole !== 'admin')) return;
 
     let applicationsQuery;
     
-    if (selectedDepartment) {
+    if (selectedDepartment && selectedDepartment !== '') {
       applicationsQuery = query(
         collection(db, 'applications'),
         where('department', '==', selectedDepartment),
@@ -82,12 +84,10 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
           serviceType: data.serviceType,
           submittedDate: data.submittedDate,
           citizenId: data.citizenId,
-          documents: data.documents || [],
           status: data.status,
           department: data.department,
-          reviewNotes: data.reviewNotes,
           userId: data.userId,
-          userEmail: data.userEmail
+          reviewNotes: data.reviewNotes
         });
       });
       setApplications(apps);
@@ -95,7 +95,7 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     });
     
     return () => unsubscribe();
-  }, [user, selectedDepartment]);
+  }, [user, userRole, selectedDepartment]);
 
   const stats = [
     { 
@@ -139,9 +139,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
 
   const handleDepartmentSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedDepartment(e.target.value);
-    if (onDepartmentChange) {
-      onDepartmentChange(e.target.value);
-    }
     showToast(language === 'np' ? 'विभाग परिवर्तन गरियो' : 'Department changed');
   };
 
@@ -160,23 +157,16 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     }
   };
 
-  const [showSupportModal, setShowSupportModal] = useState(false);
-  const [supportQuery, setSupportQuery] = useState('');
-  
-  const handleSupportCenterClick = () => {
-    setShowSupportModal(true);
+  const handleFilterClick = () => {
+    setShowFilterPanel(!showFilterPanel);
   };
 
-  const handleSupportSubmit = () => {
-    if (supportQuery.trim()) {
-      showToast(language === 'np' ? 'तपाईंको प्रश्न पठाइयो' : 'Your query has been submitted');
-      setSupportQuery('');
-      setShowSupportModal(false);
-    }
+  const handleSupportCenterClick = () => {
+    alert(language === 'np' ? 'सहयोग केन्द्र खुल्दै...' : 'Opening support center...');
   };
 
   const handleDownloadReportsClick = () => {
-    const filteredApps = getFilteredApplicationsByFilters();
+    const filteredApps = getFilteredApplications();
     const reportContent = generatePDFReport(filteredApps);
     downloadPDF(reportContent, `applications_report_${new Date().toISOString().split('T')[0]}.pdf`);
     showToast(language === 'np' ? 'रिपोर्ट डाउनलोड सुरु भयो' : 'Report download started');
@@ -193,10 +183,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
             th { background: #4CAF50; color: white; padding: 10px; text-align: left; }
             td { padding: 10px; border-bottom: 1px solid #ddd; }
-            .pending { color: #f39c12; }
-            .reviewed { color: #3498db; }
-            .approved { color: #27ae60; }
-            .rejected { color: #e74c3c; }
           </style>
         </head>
         <body>
@@ -205,28 +191,26 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
           <p>Total Applications: ${apps.length}</p>
           <p>Department: ${selectedDepartment || 'All'}</p>
           <p>Service: ${selectedService === 'all' ? 'All' : selectedService}</p>
-          <table>
+           <table>
             <thead>
-              <tr>
-                <th>Application ID</th>
+               <tr>
                 <th>Applicant Name</th>
                 <th>Service Type</th>
                 <th>Submitted Date</th>
                 <th>Status</th>
-              </tr>
+               </tr>
             </thead>
             <tbody>
               ${apps.map(app => `
-                <tr>
-                  <td>${app.id}</td>
+                 <tr>
                   <td>${app.applicantName}</td>
                   <td>${app.serviceType}</td>
                   <td>${app.submittedDate}</td>
-                  <td class="${app.status}">${app.status.toUpperCase()}</td>
-                </tr>
+                  <td>${app.status.toUpperCase()}</td>
+                 </tr>
               `).join('')}
             </tbody>
-          </table>
+           </table>
         </body>
       </html>
     `;
@@ -244,14 +228,8 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
     window.URL.revokeObjectURL(url);
   };
 
-  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
-  
   const handleDocumentsClick = () => {
-    setShowDocumentsModal(true);
-  };
-
-  const downloadDocument = (docName: string) => {
-    showToast(language === 'np' ? `${docName} डाउनलोड सुरु भयो` : `Downloading ${docName}...`);
+    alert(language === 'np' ? 'दस्तावेजहरू खुल्दै...' : 'Opening documents...');
   };
 
   const handleStatClick = (statTitle: string) => {
@@ -263,22 +241,14 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   };
 
   // Update application status in Firebase
-  const handleStatusUpdate = (application: Application, newStatus: 'pending' | 'reviewed' | 'approved' | 'rejected') => {
-    if (newStatus === 'reviewed') {
-      setShowReviewModal(application);
-      setReviewNotes('');
-    } else {
-      confirmStatusUpdate(application.id, newStatus);
-    }
-  };
-
-  const confirmStatusUpdate = async (applicationId: string, newStatus: string, notes?: string) => {
+  const handleStatusUpdate = async (applicationId: string, newStatus: 'pending' | 'reviewed' | 'approved' | 'rejected') => {
     try {
       const appRef = doc(db, 'applications', applicationId);
       await updateDoc(appRef, {
         status: newStatus,
-        ...(notes && { reviewNotes: notes }),
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
+        updatedBy: user?.uid,
+        updatedByEmail: user?.email
       });
       
       const statusMessages: Record<string, string> = {
@@ -288,20 +258,12 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
       };
       
       showToast(statusMessages[newStatus] || 'Status updated');
-      setShowReviewModal(null);
     } catch (error) {
       console.error('Error updating status:', error);
       showToast(language === 'np' ? 'अपडेट गर्न असफल' : 'Failed to update');
     }
   };
 
-  const handleReviewSubmit = () => {
-    if (showReviewModal) {
-      confirmStatusUpdate(showReviewModal.id, 'reviewed', reviewNotes);
-    }
-  };
-
-  // Filter applications based on active tab
   const getFilteredApplications = () => {
     let filtered = applications.filter(app => {
       if (activeTab === 'pending') return app.status === 'pending';
@@ -311,46 +273,19 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
       return false;
     });
     
-    // Apply department filter
-    if (selectedDepartment) {
+    if (selectedDepartment && selectedDepartment !== '') {
       filtered = filtered.filter(app => app.department === selectedDepartment);
     }
     
-    // Apply service filter
     if (selectedService !== 'all') {
       filtered = filtered.filter(app => app.serviceType.toLowerCase().includes(selectedService.toLowerCase()));
     }
     
-    // Apply search filter
     if (searchQuery) {
       filtered = filtered.filter(app => 
         app.applicantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.citizenId.includes(searchQuery)
+        app.id.toLowerCase().includes(searchQuery.toLowerCase())
       );
-    }
-    
-    return filtered;
-  };
-
-  // Filter applications for reports
-  const getFilteredApplicationsByFilters = () => {
-    let filtered = applications;
-    
-    if (selectedDepartment) {
-      filtered = filtered.filter(app => app.department === selectedDepartment);
-    }
-    if (selectedService !== 'all') {
-      filtered = filtered.filter(app => app.serviceType.toLowerCase().includes(selectedService.toLowerCase()));
-    }
-    if (dateFrom) {
-      filtered = filtered.filter(app => app.submittedDate >= dateFrom);
-    }
-    if (dateTo) {
-      filtered = filtered.filter(app => app.submittedDate <= dateTo);
-    }
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(app => app.status === filterStatus);
     }
     
     return filtered;
@@ -364,20 +299,22 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
   const filteredApplications = getFilteredApplications();
   const pendingCount = applications.filter(a => a.status === 'pending').length;
 
-  const handleApplyFilters = () => {
-    setShowFilterPanel(false);
-    showToast(language === 'np' ? 'फिल्टर लागू गरियो' : 'Filters applied');
-  };
+  // Show loading state
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const handleResetFilters = () => {
-    setDateFrom('');
-    setDateTo('');
-    setFilterStatus('all');
-    setSelectedService('all');
-    setSelectedDepartment('');
-    setSearchQuery('');
-    showToast(language === 'np' ? 'फिल्टर रिसेट गरियो' : 'Filters reset');
-  };
+  // If not authorized, don't render
+  if (!user || (userRole !== 'officer' && userRole !== 'admin')) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -403,6 +340,9 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                 <p className="text-sm text-gray-600">
                   {language === 'np' ? 'सरकारी कर्मचारी' : 'Government Officer'}
                 </p>
+                {userRole === 'admin' && (
+                  <span className="text-xs text-purple-600 font-medium ml-2">(Admin Access)</span>
+                )}
               </div>
             </div>
 
@@ -472,28 +412,28 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
       {/* Navigation Tabs */}
       <div className="bg-white border-b">
         <div className="container mx-auto px-4">
-          <div className="flex space-x-8 overflow-x-auto">
+          <div className="flex space-x-8">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`py-4 border-b-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
+              className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
             >
               {language === 'np' ? 'प्रक्रियाधीन' : 'Pending'} ({applications.filter(a => a.status === 'pending').length})
             </button>
             <button
               onClick={() => setActiveTab('reviewed')}
-              className={`py-4 border-b-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'reviewed' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
+              className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'reviewed' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
             >
               {language === 'np' ? 'समीक्षा गरिएका' : 'Reviewed'} ({applications.filter(a => a.status === 'reviewed').length})
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`py-4 border-b-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'approved' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
+              className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'approved' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
             >
               {language === 'np' ? 'स्वीकृत' : 'Approved'} ({applications.filter(a => a.status === 'approved').length})
             </button>
             <button 
               onClick={() => setActiveTab('rejected')}
-              className={`py-4 border-b-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'rejected' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
+              className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'rejected' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600'}`}
             >
               {language === 'np' ? 'अस्वीकृत' : 'Rejected'} ({applications.filter(a => a.status === 'rejected').length})
             </button>
@@ -545,7 +485,7 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
             
             <div className="flex gap-4">
               <button 
-                onClick={() => setShowFilterPanel(!showFilterPanel)}
+                onClick={handleFilterClick}
                 className="flex items-center space-x-2 px-4 py-3 border rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <Filter size={20} className="text-gray-600" />
@@ -575,8 +515,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                   </label>
                   <input 
                     type="date" 
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
                     className="border rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-blue-500" 
                   />
                 </div>
@@ -586,8 +524,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                   </label>
                   <input 
                     type="date" 
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
                     className="border rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-blue-500" 
                   />
                 </div>
@@ -595,11 +531,7 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                   <label className="block text-sm text-gray-600 mb-1">
                     {language === 'np' ? 'स्थिति' : 'Status'}
                   </label>
-                  <select 
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="border rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-blue-500"
-                  >
+                  <select className="border rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-blue-500">
                     <option value="all">{language === 'np' ? 'सबै' : 'All'}</option>
                     <option value="pending">{language === 'np' ? 'प्रक्रियाधीन' : 'Pending'}</option>
                     <option value="reviewed">{language === 'np' ? 'समीक्षा गरिएका' : 'Reviewed'}</option>
@@ -607,20 +539,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                     <option value="rejected">{language === 'np' ? 'अस्वीकृत' : 'Rejected'}</option>
                   </select>
                 </div>
-              </div>
-              <div className="flex justify-end gap-3 mt-4">
-                <button 
-                  onClick={handleResetFilters}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                >
-                  {language === 'np' ? 'रिसेट' : 'Reset'}
-                </button>
-                <button 
-                  onClick={handleApplyFilters}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  {language === 'np' ? 'लागू गर्नुहोस्' : 'Apply Filters'}
-                </button>
               </div>
             </div>
           )}
@@ -694,9 +612,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                       <p className="text-sm text-gray-600">
                         <span className="font-medium">{language === 'np' ? 'मिति' : 'Date'}:</span> {app.submittedDate}
                       </p>
-                      <p className="text-sm text-gray-600">
-                        <span className="font-medium">Citizen ID:</span> {app.citizenId}
-                      </p>
                       {app.reviewNotes && (
                         <p className="text-sm text-gray-500 mt-2 italic">
                           📝 {language === 'np' ? 'समीक्षा नोट:' : 'Review Notes:'} {app.reviewNotes}
@@ -708,19 +623,19 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                     {app.status === 'pending' && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleStatusUpdate(app, 'reviewed')}
+                          onClick={() => handleStatusUpdate(app.id, 'reviewed')}
                           className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                           {language === 'np' ? 'समीक्षा गर्नुहोस्' : 'Review'}
                         </button>
                         <button
-                          onClick={() => handleStatusUpdate(app, 'approved')}
+                          onClick={() => handleStatusUpdate(app.id, 'approved')}
                           className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                         >
                           {language === 'np' ? 'स्वीकृत गर्नुहोस्' : 'Approve'}
                         </button>
                         <button
-                          onClick={() => handleStatusUpdate(app, 'rejected')}
+                          onClick={() => handleStatusUpdate(app.id, 'rejected')}
                           className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                         >
                           {language === 'np' ? 'अस्वीकृत गर्नुहोस्' : 'Reject'}
@@ -730,13 +645,13 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
                     {app.status === 'reviewed' && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleStatusUpdate(app, 'approved')}
+                          onClick={() => handleStatusUpdate(app.id, 'approved')}
                           className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                         >
                           {language === 'np' ? 'स्वीकृत गर्नुहोस्' : 'Approve'}
                         </button>
                         <button
-                          onClick={() => handleStatusUpdate(app, 'rejected')}
+                          onClick={() => handleStatusUpdate(app.id, 'rejected')}
                           className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                         >
                           {language === 'np' ? 'अस्वीकृत गर्नुहोस्' : 'Reject'}
@@ -841,119 +756,6 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout,
           </div>
         </div>
       </main>
-
-      {/* Review Modal */}
-      {showReviewModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4">
-              {language === 'np' ? 'आवेदन समीक्षा' : 'Review Application'}
-            </h3>
-            <div className="mb-4">
-              <p className="text-gray-600">
-                <span className="font-medium">{language === 'np' ? 'आवेदक' : 'Applicant'}:</span> {showReviewModal.applicantName}
-              </p>
-              <p className="text-gray-600 mt-1">
-                <span className="font-medium">{language === 'np' ? 'सेवा' : 'Service'}:</span> {showReviewModal.serviceType}
-              </p>
-            </div>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {language === 'np' ? 'समीक्षा नोटहरू' : 'Review Notes'}
-              </label>
-              <textarea
-                value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder={language === 'np' ? 'समीक्षा नोटहरू प्रविष्ट गर्नुहोस्...' : 'Enter review notes...'}
-              />
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowReviewModal(null)}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                {language === 'np' ? 'रद्द गर्नुहोस्' : 'Cancel'}
-              </button>
-              <button
-                onClick={handleReviewSubmit}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                {language === 'np' ? 'समीक्षा पूरा गर्नुहोस्' : 'Complete Review'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Support Modal */}
-      {showSupportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4">
-              {language === 'np' ? 'नागरिक सहयोग' : 'Citizen Support'}
-            </h3>
-            <p className="text-gray-600 mb-4">
-              {language === 'np' 
-                ? 'तपाईंको प्रश्न वा सहायताको लागि यहाँ लेख्नुहोस्।' 
-                : 'Write your question or support request here.'}
-            </p>
-            <textarea
-              value={supportQuery}
-              onChange={(e) => setSupportQuery(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4"
-              placeholder={language === 'np' ? 'तपाईंको प्रश्न...' : 'Your question...'}
-            />
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowSupportModal(false)}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                {language === 'np' ? 'रद्द गर्नुहोस्' : 'Cancel'}
-              </button>
-              <button
-                onClick={handleSupportSubmit}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                {language === 'np' ? 'पठाउनुहोस्' : 'Submit'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Documents Modal */}
-      {showDocumentsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">
-              {language === 'np' ? 'दस्तावेजहरू' : 'Documents'}
-            </h3>
-            <div className="space-y-3">
-              {['Citizenship Application Form', 'Birth Registration Form', 'Marriage Registration Form', 'Document Checklist'].map((doc, i) => (
-                <button
-                  key={i}
-                  onClick={() => downloadDocument(doc)}
-                  className="w-full flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <span>{doc}</span>
-                  <Download size={18} className="text-gray-500" />
-                </button>
-              ))}
-            </div>
-            <div className="mt-6">
-              <button
-                onClick={() => setShowDocumentsModal(false)}
-                className="w-full py-2 border rounded-lg hover:bg-gray-50"
-              >
-                {language === 'np' ? 'बन्द गर्नुहोस्' : 'Close'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style>{`
         @keyframes fade-in {

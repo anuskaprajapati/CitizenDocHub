@@ -1,9 +1,23 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { Language, ServiceType } from '../types';
 import { 
   User, FileText, Clock, CheckCircle, Plus, Upload, LogOut, Search, Bell, Home, 
   X, Calendar, UserCheck, FileCheck, AlertCircle, Download, Edit, Trash2, Eye
 } from 'lucide-react';
+import { useFirebaseAuth } from '../hooks/useFirebaseAuth';
+import { db } from '../firebase/config';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  updateDoc, 
+  deleteDoc, 
+  doc,
+  Timestamp
+} from 'firebase/firestore';
 
 interface CitizenDashboardProps {
   language: Language;
@@ -21,6 +35,7 @@ interface Application {
   estimatedCompletion?: string;
   requiredDocuments?: string[];
   notes?: string;
+  firebaseId?: string;
 }
 
 interface Document {
@@ -34,52 +49,56 @@ interface Document {
 const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout }) => {
   const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'applications' | 'documents'>('overview');
-  const [applications, setApplications] = useState<Application[]>([
-    {
-      id: 'app-1',
-      service: 'birth-certificate',
-      status: 'pending',
-      date: '2/1/2026',
-      title: 'Birth Certificate - Application',
-      description: 'Application for a new birth certificate',
-      submittedDate: '2026-02-01',
-      estimatedCompletion: '2026-02-15',
-      requiredDocuments: ['ID Proof', 'Address Proof', 'Birth Affidavit'],
-      notes: 'Awaiting verification from municipal office'
-    },
-    {
-      id: 'app-2',
-      service: 'marriage-registration',
-      status: 'pending',
-      date: '2/1/2026',
-      title: 'Marriage Registration - Application',
-      description: 'Registration of marriage certificate',
-      submittedDate: '2026-02-01',
-      estimatedCompletion: '2026-02-20',
-      requiredDocuments: ['Marriage Proof', 'Witness Documents', 'ID Proofs'],
-      notes: 'Documents under review'
-    },
-    {
-      id: 'app-3',
-      service: 'citizenship-certificate',
-      status: 'pending',
-      date: '2/1/2026',
-      title: 'Citizenship Certificate - Application',
-      description: 'Application for duplicate citizenship certificate',
-      submittedDate: '2026-02-01',
-      estimatedCompletion: '2026-02-25',
-      requiredDocuments: ['Old Citizenship Copy', 'Police Report', 'Affidavit'],
-      notes: 'Police verification in progress'
-    }
-  ]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [showApplicationDetails, setShowApplicationDetails] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Firebase Auth
+  const { user } = useFirebaseAuth();
+
+  // Real-time listener for user's applications from Firebase
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'applications'),
+      where('userId', '==', user.uid),
+      orderBy('submittedDate', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const apps: Application[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        apps.push({
+          id: `app-${doc.id}`,
+          firebaseId: doc.id,
+          service: data.serviceType?.toLowerCase().replace(/\s+/g, '-') as ServiceType || 'citizenship-certificate',
+          status: data.status === 'pending' ? 'pending' : 
+                  data.status === 'reviewed' ? 'in-progress' : 
+                  data.status === 'approved' ? 'completed' : 'pending',
+          date: data.submittedDate,
+          title: `${data.serviceType} - Application`,
+          description: `Application for ${data.serviceType?.toLowerCase() || 'service'}`,
+          submittedDate: data.submittedDate,
+          estimatedCompletion: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          requiredDocuments: ['ID Proof', 'Address Proof'],
+          notes: data.reviewNotes || 'Application submitted'
+        });
+      });
+      setApplications(apps);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   // Stats based on actual data
   const totalApplications = applications.length;
@@ -142,12 +161,10 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     }
   ];
 
-  // Button handlers
   const handleNewApplication = () => {
     alert(language === 'np' 
       ? 'नयाँ आवेदन फारम खुल्दै...' 
       : 'Opening new application form...');
-    // In a real app, this would navigate to the application form
   };
 
   const handleUploadDocuments = () => {
@@ -172,18 +189,12 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
         ? `${files.length} कागजात(हरू) सफलतापूर्वक अपलोड गरियो`
         : `${files.length} document(s) uploaded successfully`);
       
-      // Clear file input
       event.target.value = '';
     }
   };
 
   const handleServiceSelect = (serviceId: ServiceType) => {
     setSelectedService(serviceId);
-    const service = services.find(s => s.id === serviceId);
-    alert(language === 'np'
-      ? `${service?.name} सेवा चयन गरियो। फारम खुल्दै...`
-      : `${service?.name} service selected. Opening form...`);
-    // Navigate to service application form
   };
 
   const handleSubmitFirstApplication = () => {
@@ -212,7 +223,8 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     setShowNotifications(false);
   };
 
-  const createNewApplication = () => {
+  // Create new application and save to Firebase
+  const createNewApplication = async () => {
     if (!selectedService) {
       alert(language === 'np' 
         ? 'कृपया पहिले सेवा चयन गर्नुहोस्' 
@@ -220,27 +232,41 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
       return;
     }
 
-    const service = services.find(s => s.id === selectedService);
-    const newApplication: Application = {
-      id: `app-${Date.now()}`,
-      service: selectedService,
-      status: 'pending',
-      date: new Date().toLocaleDateString(),
-      title: `${service?.name} - Application`,
-      description: `Application for ${service?.name.toLowerCase()}`,
-      submittedDate: new Date().toISOString().split('T')[0],
-      estimatedCompletion: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      requiredDocuments: ['ID Proof', 'Address Proof'],
-      notes: 'New application submitted'
-    };
+    if (!user) {
+      alert('Please login again');
+      return;
+    }
 
-    setApplications(prev => [...prev, newApplication]);
+    const service = services.find(s => s.id === selectedService);
+    const submittedDate = new Date().toISOString().split('T')[0];
     
-    alert(language === 'np'
-      ? `तपाईंको ${service?.name} आवेदन सफलतापूर्वक सिर्जना गरियो`
-      : `Your ${service?.name} application has been created successfully`);
-    
-    setSelectedService(null);
+    try {
+      // Save to Firebase
+      const docRef = await addDoc(collection(db, 'applications'), {
+        applicantName: user.email?.split('@')[0] || 'Citizen',
+        serviceType: service?.name || selectedService,
+        submittedDate: submittedDate,
+        citizenId: user.uid,
+        documents: [],
+        status: 'pending',
+        department: selectedService,
+        userId: user.uid,
+        userEmail: user.email,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+
+      alert(language === 'np'
+        ? `तपाईंको ${service?.name} आवेदन सफलतापूर्वक पेश गरियो`
+        : `Your ${service?.name} application has been submitted successfully`);
+      
+      setSelectedService(null);
+    } catch (error) {
+      console.error('Error creating application:', error);
+      alert(language === 'np'
+        ? 'आवेदन पेश गर्न असफल भयो'
+        : 'Failed to submit application');
+    }
   };
 
   const handleViewDetails = (application: Application) => {
@@ -257,10 +283,8 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     alert(language === 'np'
       ? `${application.title} डाउनलोड गर्दै...`
       : `Downloading ${application.title}...`);
-    // In a real app, this would download the application PDF
   };
 
-  // FIXED: handleEditApplication now properly updates the application
   const handleEditApplication = (application: Application) => {
     const newTitle = window.prompt(
       language === 'np' 
@@ -270,12 +294,10 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     );
     
     if (newTitle && newTitle.trim() !== '' && newTitle !== application.title) {
-      // Update the application in the state
       setApplications(prev => prev.map(app => 
         app.id === application.id ? { ...app, title: newTitle.trim() } : app
       ));
       
-      // Also update the selectedApplication if it's the one being edited
       if (selectedApplication?.id === application.id) {
         setSelectedApplication(prev => prev ? { ...prev, title: newTitle.trim() } : null);
       }
@@ -283,24 +305,34 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
       alert(language === 'np' 
         ? 'आवेदन सफलतापूर्वक अपडेट गरियो' 
         : 'Application updated successfully');
-    } else if (newTitle && newTitle.trim() !== '') {
-      // User entered the same title
-      alert(language === 'np' 
-        ? 'नाम परिवर्तन भएन (समान नाम)' 
-        : 'No changes made (same name)');
     }
   };
 
-  const handleDeleteApplication = (applicationId: string) => {
+  // Delete application from Firebase
+  const handleDeleteApplication = async (applicationId: string) => {
     if (window.confirm(language === 'np' 
       ? 'के तपाईं यो आवेदन हटाउन निश्चित हुनुहुन्छ?' 
       : 'Are you sure you want to delete this application?')) {
-      setApplications(prev => prev.filter(app => app.id !== applicationId));
-      if (selectedApplication?.id === applicationId) {
-        setShowApplicationDetails(false);
-        setSelectedApplication(null);
+      
+      // Find the Firebase document ID
+      const appToDelete = applications.find(app => app.id === applicationId);
+      if (appToDelete?.firebaseId) {
+        try {
+          await deleteDoc(doc(db, 'applications', appToDelete.firebaseId));
+          alert(language === 'np' ? 'आवेदन हटाइयो' : 'Application deleted');
+        } catch (error) {
+          console.error('Error deleting application:', error);
+          alert(language === 'np' ? 'हटाउन असफल' : 'Failed to delete');
+        }
+      } else {
+        // Fallback to local deletion
+        setApplications(prev => prev.filter(app => app.id !== applicationId));
+        if (selectedApplication?.id === applicationId) {
+          setShowApplicationDetails(false);
+          setSelectedApplication(null);
+        }
+        alert(language === 'np' ? 'आवेदन हटाइयो' : 'Application deleted');
       }
-      alert(language === 'np' ? 'आवेदन हटाइयो' : 'Application deleted');
     }
   };
 
@@ -322,20 +354,17 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     }
   };
 
-  // Filter applications based on search
   const filteredApplications = applications.filter(app => 
     app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     app.service.toLowerCase().includes(searchQuery.toLowerCase()) ||
     app.status.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Filter documents based on search
   const filteredDocuments = documents.filter(doc => 
     doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     doc.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Render Application Details Modal
   const renderApplicationDetails = () => {
     if (!selectedApplication) return null;
 
@@ -344,7 +373,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-          {/* Header */}
           <div className="flex justify-between items-center p-6 border-b">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{selectedApplication.title}</h2>
@@ -358,10 +386,8 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
             </button>
           </div>
 
-          {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {/* Application Info */}
               <div className="space-y-4">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 bg-blue-100 rounded-lg">
@@ -406,7 +432,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
                 </div>
               </div>
 
-              {/* Service Info */}
               <div className="space-y-4">
                 <div className="flex items-center space-x-3">
                   <div className="text-3xl">{service?.icon}</div>
@@ -433,7 +458,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
               </div>
             </div>
 
-            {/* Notes */}
             {selectedApplication.notes && (
               <div className="border-t pt-6">
                 <h4 className="font-medium text-gray-900 mb-2">
@@ -446,7 +470,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
             )}
           </div>
 
-          {/* Footer with Action Buttons */}
           <div className="p-6 border-t bg-gray-50 flex flex-wrap gap-3">
             <button
               onClick={() => handleDownloadApplication(selectedApplication)}
@@ -481,13 +504,11 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     );
   };
 
-  // Render content based on active tab
   const renderTabContent = () => {
     switch (activeTab) {
       case 'applications':
         return (
           <div className="space-y-6">
-            {/* Applications Header */}
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">
@@ -499,8 +520,12 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
               </div>
             </div>
             
-            {/* Applications List */}
-            {filteredApplications.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading...</p>
+              </div>
+            ) : filteredApplications.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-xl">
                 <FileText className="mx-auto text-gray-400 mb-4" size={48} />
                 <h3 className="text-lg font-medium text-gray-700 mb-2">
@@ -626,10 +651,9 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
           </div>
         );
 
-      default: // overview
+      default:
         return (
           <>
-            {/* Welcome Card */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-8 text-white mb-8">
               <h2 className="text-2xl md:text-3xl font-bold mb-4">
                 {language === 'np' ? 'स्वागतम्, नागरिक' : 'Welcome, Citizen'}
@@ -658,7 +682,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
               </div>
             </div>
 
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               {stats.map((stat, index) => (
                 <div key={index} className="bg-white rounded-xl shadow p-6">
@@ -674,7 +697,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
               ))}
             </div>
 
-            {/* Services Section */}
             <div className="bg-white rounded-xl shadow p-6 mb-8">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-gray-900">
@@ -702,7 +724,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
               </div>
             </div>
 
-            {/* Applications Section */}
             <div className="bg-white rounded-xl shadow p-6">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-gray-900">
@@ -789,10 +810,20 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
     }
   };
 
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="min-h-screen bg-gray-50">
-        {/* Hidden file input */}
         <input
           type="file"
           ref={fileInputRef}
@@ -802,7 +833,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
           accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
         />
 
-        {/* Header */}
         <header className="bg-white shadow">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
@@ -821,7 +851,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
               </div>
 
               <div className="flex items-center space-x-4">
-                {/* Search */}
                 <div className="relative hidden md:block">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                   <input
@@ -833,7 +862,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
                   />
                 </div>
 
-                {/* Notifications */}
                 <div className="relative">
                   <button 
                     onClick={handleNotificationClick}
@@ -878,7 +906,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
                   )}
                 </div>
 
-                {/* Home */}
                 <button 
                   onClick={handleHomeClick}
                   className="p-2 hover:bg-gray-100 rounded-lg"
@@ -886,7 +913,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
                   <Home size={24} className="text-gray-600" />
                 </button>
 
-                {/* Logout */}
                 <button
                   onClick={onLogout}
                   className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
@@ -899,7 +925,6 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
           </div>
         </header>
 
-        {/* Navigation Tabs */}
         <div className="bg-white border-b">
           <div className="container mx-auto px-4">
             <div className="flex space-x-8">
@@ -925,13 +950,11 @@ const CitizenDashboard: React.FC<CitizenDashboardProps> = ({ language, onLogout 
           </div>
         </div>
 
-        {/* Main Content */}
         <main className="container mx-auto px-4 py-8">
           {renderTabContent()}
         </main>
       </div>
 
-      {/* Application Details Modal */}
       {showApplicationDetails && renderApplicationDetails()}
     </>
   );

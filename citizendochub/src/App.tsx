@@ -14,21 +14,31 @@ const App: React.FC = () => {
 
   // Auto-redirect based on auth state
   useEffect(() => {
+    console.log('App useEffect - loading:', loading, 'user:', user?.email, 'userRole:', userRole);
+    
     if (!loading) {
       if (user) {
-        // User is logged in, redirect to appropriate dashboard
+        // User is logged in, redirect to appropriate dashboard based on role
+        console.log('User logged in, role:', userRole);
+        
         if (userRole === 'citizen') {
+          console.log('Redirecting to Citizen Dashboard');
           setCurrentPage('citizen');
         } else if (userRole === 'officer') {
+          console.log('Redirecting to Officer Dashboard');
           setCurrentPage('officer');
         } else if (userRole === 'admin') {
+          console.log('Redirecting to Admin Dashboard');
           setCurrentPage('admin');
         } else {
-          setCurrentPage('citizen'); // Default to citizen if role not set
+          // Default to citizen if role not determined
+          console.log('Role not determined, defaulting to Citizen Dashboard');
+          setCurrentPage('citizen');
         }
       } else {
         // User is not logged in, show home page
         if (currentPage !== 'home' && currentPage !== 'login') {
+          console.log('No user, redirecting to Home');
           setCurrentPage('home');
         }
       }
@@ -43,9 +53,8 @@ const App: React.FC = () => {
     setCurrentPage('login');
   };
 
-  // Fixed: Handle login with proper credentials
   const handleLogin = async (userType: UserType, credentials: { email: string; password: string }) => {
-    console.log('Attempting login with:', credentials.email);
+    console.log('App: Attempting login with:', { email: credentials.email, userType });
     
     if (!credentials.email || !credentials.password) {
       alert(language === 'np' ? 'इमेल र पासवर्ड आवश्यक छ' : 'Email and password are required');
@@ -58,7 +67,6 @@ const App: React.FC = () => {
       console.log('Login successful');
       // The useEffect will handle redirect based on role
     } else {
-      console.error('Login failed:', result.error);
       alert(language === 'np' 
         ? `लगइन असफल: ${result.error}` 
         : `Login failed: ${result.error}`);
@@ -98,6 +106,7 @@ const App: React.FC = () => {
   }
 
   const renderPage = () => {
+    console.log('Rendering page:', currentPage);
     switch (currentPage) {
       case 'login':
         return (
