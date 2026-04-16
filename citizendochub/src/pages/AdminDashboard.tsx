@@ -70,6 +70,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onLogout }) =
   const [applications, setApplications] = useState<Application[]>([]);
   const [systemLogs, setSystemLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+const [dateFrom, setDateFrom] = useState<string>('');
+const [dateTo, setDateTo] = useState<string>('');
+const [showFilterPanel, setShowFilterPanel] = useState<boolean>(false);
   
   // Firebase Auth
   const { user } = useFirebaseAuth();

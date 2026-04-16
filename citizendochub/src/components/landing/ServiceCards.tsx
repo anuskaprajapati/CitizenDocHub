@@ -16,9 +16,7 @@ const ServiceCards: React.FC<ServiceCardProps> = ({ language, onApplyClick }) =>
             descriptionNp: 'नयाँ वा नक्कल नागरिकता प्रमाणपत्रको लागि',
             icon: '🆔',
             processingTime: '15-30 Workday',
-            processingTimeNp: '१५-३० कार्यदिन',
-            fee: 0,
-            feeNp: '०'
+            processingTimeNp: '१५-३० कार्यदिन'
         },
         {
             id: 'birth-certificate',
@@ -28,9 +26,7 @@ const ServiceCards: React.FC<ServiceCardProps> = ({ language, onApplyClick }) =>
             descriptionNp: 'नयाँ जन्म दर्ता वा प्रतिलिपि को लागि',
             icon: '👶',
             processingTime: '7-15 Workday',
-            processingTimeNp: '७-१५ कार्यदिन',
-            fee: 500,
-            feeNp: '५००'
+            processingTimeNp: '७-१५ कार्यदिन'
         },
         {
             id: 'marriage-registration',
@@ -40,9 +36,7 @@ const ServiceCards: React.FC<ServiceCardProps> = ({ language, onApplyClick }) =>
             descriptionNp: 'विवाह दर्ता र आधिकारिक प्रमाणपत्र को लागि',
             icon: '💍',
             processingTime: '7-15 Workday',
-            processingTimeNp: '७-१५ कार्यदिन',
-            fee: 1000,
-            feeNp: '१०००'
+            processingTimeNp: '७-१५ कार्यदिन'
         }
     ];
 
@@ -66,10 +60,6 @@ const ServiceCards: React.FC<ServiceCardProps> = ({ language, onApplyClick }) =>
                                 <div className='flex justify-between'>
                                     <span className='text-gray-700'>{language === 'np' ? 'समय:' : 'Time:'}</span>
                                     <span className="font-medium">{language === 'np' ? service.processingTimeNp : service.processingTime}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-700">{language === 'np' ? 'शुल्क:' : 'Fee:'}</span>
-                                    <span className="font-medium">{language === 'np' ? `रु ${service.feeNp}` : `Rs ${service.fee}`}</span>
                                 </div>
                             </div>
                             <button 

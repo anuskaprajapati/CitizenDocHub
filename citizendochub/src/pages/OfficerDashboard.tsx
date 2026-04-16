@@ -150,6 +150,20 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout 
   const handleNotificationsClick = () => {
     setShowNotifications(!showNotifications);
   };
+  const formatNotificationDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 1) return language === 'np' ? 'अहिलेै' : 'Just now';
+  if (diffMins < 60) return `${diffMins} ${language === 'np' ? 'मिनेट पहिले' : 'min ago'}`;
+  if (diffHours < 24) return `${diffHours} ${language === 'np' ? 'घण्टा पहिले' : 'hours ago'}`;
+  if (diffDays < 7) return `${diffDays} ${language === 'np' ? 'दिन पहिले' : 'days ago'}`;
+  return date.toLocaleDateString(language === 'np' ? 'ne-NP' : 'en-US');
+};
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
@@ -360,41 +374,127 @@ const OfficerDashboard: React.FC<OfficerDashboardProps> = ({ language, onLogout 
               </select>
 
               {/* Notifications */}
-              <button 
-                onClick={handleNotificationsClick}
-                className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <Bell size={24} className="text-gray-600" />
-                {pendingCount > 0 && (
-                  <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {pendingCount}
-                  </span>
-                )}
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border p-4 z-50">
-                    <h4 className="font-bold mb-3">{language === 'np' ? 'सूचनाहरू' : 'Notifications'}</h4>
-                    {pendingCount > 0 ? (
-                      <div className="space-y-3">
-                        <p className="text-sm text-gray-600">
-                          {language === 'np' 
-                            ? `${pendingCount} वटा नयाँ प्रक्रियाधीन आवेदनहरू छन्` 
-                            : `${pendingCount} new pending applications`}
-                        </p>
-                        <button 
-                          onClick={() => setActiveTab('pending')}
-                          className="text-sm text-blue-600 hover:text-blue-800"
-                        >
-                          {language === 'np' ? 'हेर्नुहोस्' : 'View now'}
-                        </button>
+<button 
+  onClick={() => setShowNotifications(!showNotifications)}
+  className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+>
+  <Bell size={24} className="text-gray-600" />
+  {pendingCount > 0 && (
+    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+      {pendingCount}
+    </span>
+  )}
+  
+  {/* Notifications Dropdown */}
+  {showNotifications && (
+    <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden animate-fade-in">
+      {/* Header */}
+      <div className="flex justify-between items-center p-4 border-b bg-gradient-to-r from-blue-50 to-white">
+        <div className="flex items-center space-x-2">
+          <Bell size={18} className="text-blue-600" />
+          <h4 className="font-bold text-gray-900">
+            {language === 'np' ? 'सूचनाहरू' : 'Notifications'}
+          </h4>
+          {pendingCount > 0 && (
+            <span className="ml-2 text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">
+              {pendingCount} {language === 'np' ? 'नयाँ' : 'new'}
+            </span>
+          )}
+        </div>
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveTab('pending');
+            setShowNotifications(false);
+          }}
+          className="text-xs text-blue-600 hover:text-blue-800"
+        >
+          {language === 'np' ? 'सबै हेर्नुहोस्' : 'View all'}
+        </button>
+      </div>
+
+      {/* Notifications List */}
+      <div className="max-h-96 overflow-y-auto">
+        {applications.filter(app => app.status === 'pending').length > 0 ? (
+          <div className="divide-y">
+            {applications
+              .filter(app => app.status === 'pending')
+              .map((app) => (
+                <div 
+                  key={app.id} 
+                  className="p-4 hover:bg-blue-50 transition-colors cursor-pointer group"
+                  onClick={() => {
+                    setActiveTab('pending');
+                    setShowNotifications(false);
+                  }}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
+                        <FileText size={18} className="text-yellow-600" />
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        {language === 'np' ? 'कुनै नयाँ सूचना छैन' : 'No new notifications'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {language === 'np' ? 'नयाँ आवेदन' : 'New Application'}
+                        </p>
+                        <span className="text-xs text-gray-400">
+                          {new Date(app.submittedDate).toLocaleDateString(language === 'np' ? 'ne-NP' : 'en-US')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700 mt-1">
+                        <span className="font-medium">{language === 'np' ? 'आवेदक:' : 'Applicant:'}</span> {app.applicantName}
                       </p>
-                    )}
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {app.serviceType}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                          {language === 'np' ? 'प्रक्रियाधीन' : 'Pending'}
+                        </span>
+                        <span className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {language === 'np' ? 'हेर्नुहोस् →' : 'View →'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
+              ))}
+            
+            {/* View All Button at Bottom */}
+            <div className="p-3 border-t bg-gray-50">
+              <button 
+                onClick={() => {
+                  setActiveTab('pending');
+                  setShowNotifications(false);
+                  showToast(language === 'np' ? 'सबै प्रक्रियाधीन आवेदनहरू देखाउँदै' : 'Showing all pending applications');
+                }}
+                className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium py-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {language === 'np' ? 'सबै आवेदनहरू हेर्नुहोस् →' : 'View all applications →'}
               </button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Bell size={24} className="text-gray-400" />
+            </div>
+            <p className="text-gray-500 text-sm">
+              {language === 'np' ? 'कुनै नयाँ सूचना छैन' : 'No new notifications'}
+            </p>
+            <p className="text-gray-400 text-xs mt-1">
+              {language === 'np' 
+                ? 'नयाँ आवेदन आउँदा यहाँ देखिनेछ' 
+                : 'New applications will appear here'}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
+</button>
 
               {/* Logout */}
               <button

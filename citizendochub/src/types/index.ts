@@ -13,8 +13,6 @@ export interface Service {
   icon: string;
   processingTime: string;
   processingTimeNp: string;
-  fee: number;
-  feeNp: string;
 }
 
 export interface Application {
